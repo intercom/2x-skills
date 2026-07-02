@@ -1,0 +1,13 @@
+{
+  "name": "skill-tools",
+  "version": "0.1.0",
+  "description": "Tools for authoring and reviewing Claude Code skills.",
+  "author": {
+    "name": "Fin 2x"
+  },
+  "keywords": [
+    "skill",
+    "quality"
+  ],
+  "license": "MIT"
+}
