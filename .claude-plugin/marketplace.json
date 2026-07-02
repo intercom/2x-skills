@@ -1,0 +1,14 @@
+{
+  "name": "fin-2x",
+  "description": "A marketplace of Claude Code skills built by the Fin 2x team.",
+  "owner": {
+    "name": "Fin 2x"
+  },
+  "plugins": [
+    {
+      "name": "skill-tools",
+      "source": "./plugins/skill-tools",
+      "description": "Tools for authoring and reviewing Claude Code skills."
+    }
+  ]
+}

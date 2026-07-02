@@ -1,11 +1,29 @@
-# skills
+# fin-2x
 
-A collection of Claude skills we think are generic enough to be useful to everyone.
+A marketplace of Claude Code skills built by the Fin 2x team.
 
-## Skills
+## Install
 
-- **[skill-review](./skill-review/)** — Review Claude Code skills against substantive quality standards: a closed 7-category rubric (Structural Discipline, Integrity, Test Coverage, Security, Content Quality, Convention, Cost) with structured JSON output and a determinism contract. Complements Anthropic's `plugin-dev:skill-reviewer` (which covers structural checks) by focusing on whether a skill gives Claude the right kind of content, has appropriate test coverage, and is shaped and placed well.
+Add the marketplace, then install the plugin you want:
 
-## Using a skill
+```
+/plugin marketplace add intercom/2x-skills
+/plugin install skill-tools@fin-2x
+```
 
-Each skill is a self-contained directory with a `SKILL.md` entrypoint. Drop it into `~/.claude/skills/` (personal), a repo's `.claude/skills/` (project-local), or a plugin, and Claude Code will pick it up.
+## Plugins
+
+- **[skill-tools](./plugins/skill-tools/)** — Tools for authoring and reviewing Claude Code skills. Includes the `skill-review` skill, which reviews skills against a closed 7-category quality rubric (Structural Discipline, Integrity, Test Coverage, Security, Content Quality, Convention, Cost) with structured JSON output and a determinism contract.
+
+## Repository layout
+
+```
+.claude-plugin/marketplace.json   # marketplace catalog
+plugins/<plugin>/                  # one directory per plugin
+  .claude-plugin/plugin.json       # plugin manifest
+  skills/<skill>/SKILL.md          # skills shipped by the plugin
+```
+
+## License
+
+MIT
