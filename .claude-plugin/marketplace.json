@@ -9,6 +9,11 @@
       "name": "skill-tools",
       "source": "./plugins/skill-tools",
       "description": "Tools for authoring and reviewing Claude Code skills."
+    },
+    {
+      "name": "security-tools",
+      "source": "./plugins/security-tools",
+      "description": "Harden GitHub Actions workflows against supply-chain and injection attacks."
     }
   ]
 }
