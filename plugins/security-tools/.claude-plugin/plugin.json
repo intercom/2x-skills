@@ -1,0 +1,15 @@
+{
+  "name": "security-tools",
+  "version": "0.1.0",
+  "description": "Harden GitHub Actions workflows against supply-chain and injection attacks.",
+  "author": {
+    "name": "Fin 2x"
+  },
+  "keywords": [
+    "github-actions",
+    "security",
+    "supply-chain",
+    "ci"
+  ],
+  "license": "MIT"
+}
