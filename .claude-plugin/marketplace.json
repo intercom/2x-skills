@@ -16,6 +16,21 @@
       "description": "Harden GitHub Actions workflows against supply-chain and injection attacks."
     },
     {
+      "name": "claude-code-tools",
+      "source": "./plugins/claude-code-tools",
+      "description": "Meta-tools for running Claude Code well: audit your permission allowlist, fix local toolchain gaps, and analyze usage costs."
+    },
+    {
+      "name": "test-tools",
+      "source": "./plugins/test-tools",
+      "description": "Investigate and fix flaky tests across frameworks and CI systems."
+    },
+    {
+      "name": "code-review-tools",
+      "source": "./plugins/code-review-tools",
+      "description": "Strict structural and architectural code review that hunts for dramatic simplifications."
+    },
+    {
       "name": "pr-tools",
       "source": "./plugins/pr-tools",
       "description": "Open well-formed GitHub pull requests from Claude Code and attach screenshots and recordings to them."
