@@ -3,7 +3,7 @@ name: secure-github-actions
 description: |
   Harden GitHub Actions workflows against supply-chain and injection attacks when
   creating, modifying, or reviewing a `.github/workflows/*.yml` file. Skip for
-  unrelated CI work (other CI providers, Playwright harness, dependency pinning)
+  unrelated CI work (other CI providers, test harnesses, dependency pinning)
   that does not touch a workflow YAML.
 metadata:
   keywords: github actions, workflow yaml, .github/workflows, expression injection, SHA pin, pull_request_target, claude-code-action
@@ -32,12 +32,15 @@ but the actual task is one of the below, **step aside**: say in a single line th
 rules here only apply to `.github/workflows/*.yml` edits and continue with the real task.
 Do not run the audit grep commands or the pre-PR checklist on unrelated code.
 
-- **Other CI providers** (e.g. `pipeline.yml`, `.buildkite/`, CircleCI config) — use that provider's tooling
-- **Playwright / e2e harness setup** that does not edit a workflow YAML
-- **Dependency pinning** in `package.json`, `pnpm-lock.yaml`, `Gemfile`, etc. — even
-  though supply-chain–adjacent, the rules below are about workflow YAML idioms
+- **Other CI providers** — any non-GitHub-Actions CI config (a Buildkite pipeline, a
+  CircleCI/GitLab/Jenkins config, etc.) — use that provider's own tooling
+- **Test / e2e harness setup** (Playwright, Cypress, or any framework) that does not edit a workflow YAML
+- **Dependency or lockfile pinning** in a package manifest of any language
+  (`package.json`, `Gemfile`, `pom.xml`, `go.mod`, `requirements.txt`, `Cargo.toml`, …) —
+  even though supply-chain–adjacent, the rules below are about workflow YAML idioms
 - **Generic CI investigation** with no workflow file change in scope
-- **Supply-chain questions about npm/pnpm/RubyGems** — use a package supply-chain scanner
+- **Package supply-chain questions** for any ecosystem (npm, RubyGems, Maven, Go modules,
+  PyPI, crates, …) — use a package supply-chain scanner
 
 If a workflow file is *also* in scope alongside one of the above, apply the rules
 to the workflow file and step aside for the rest.
@@ -117,27 +120,24 @@ which secrets the called workflow needs.
 # VULNERABLE — exposes ALL repo secrets to the called workflow
 jobs:
   notify:
-    uses: your-org/shared-workflows/.github/workflows/notify.yml@main
+    uses: your-org/shared-workflows/.github/workflows/notify.yml@9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c # v2.3.1
     secrets: inherit
 
 # SAFE — only passes what's needed
 jobs:
   notify:
-    uses: your-org/shared-workflows/.github/workflows/notify.yml@main
+    uses: your-org/shared-workflows/.github/workflows/notify.yml@9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c # v2.3.1
     secrets:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 ```
 
 **Why:** `secrets: inherit` passes every secret the caller has access to. If the
-called workflow's repo is compromised (pushed malicious code to `main`), every secret
-is exfiltrated. This is a well-documented real-world exfiltration path — incidents have
+called workflow is compromised, every secret is exfiltrated. This is a well-documented real-world exfiltration path — incidents have
 traced back to a single `secrets: inherit` repeated across many workflows.
 
 ### Rule 3: SHA-pin all action references
 
 Pin every `uses:` reference to a full commit SHA with a version comment.
-Only exception: trusted reusable workflows in a repo **you** control that has branch
-protection with required reviews (e.g. `your-org/shared-workflows@main`).
 
 ```yaml
 # VULNERABLE — mutable tag, can change without notice
@@ -337,7 +337,7 @@ Mirror every scope the callee declares at the caller's top level.
 # Workflow logs green; labelling silently fails.
 jobs:
   call-label-prs:
-    uses: your-org/shared-workflows/.github/workflows/label-prs.yml@main
+    uses: your-org/shared-workflows/.github/workflows/label-prs.yml@1a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d # v1.5.0
 
 # SAFE — caller grants what the callee needs.
 permissions:
@@ -345,7 +345,7 @@ permissions:
   issues: write
 jobs:
   call-label-prs:
-    uses: your-org/shared-workflows/.github/workflows/label-prs.yml@main
+    uses: your-org/shared-workflows/.github/workflows/label-prs.yml@1a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d # v1.5.0
 ```
 
 **You usually cannot see what the callee needs from the caller alone.** A reusable
@@ -371,7 +371,7 @@ permissions:
   contents: read
 jobs:
   upload-sbom:
-    uses: your-org/shared-workflows/.github/workflows/upload-sbom.yml@main
+    uses: your-org/shared-workflows/.github/workflows/upload-sbom.yml@c0ffee1234567890abcdef1234567890abcdef12 # v3.2.0
 
 # SAFE — keep id-token: write; the callee's OIDC step needs it.
 permissions:
@@ -379,7 +379,7 @@ permissions:
   id-token: write   # required by the reusable callee for OIDC cloud upload
 jobs:
   upload-sbom:
-    uses: your-org/shared-workflows/.github/workflows/upload-sbom.yml@main
+    uses: your-org/shared-workflows/.github/workflows/upload-sbom.yml@c0ffee1234567890abcdef1234567890abcdef12 # v3.2.0
 ```
 
 Note the two distinct failure modes: a clipped **`GITHUB_TOKEN`** scope (issues,
@@ -569,7 +569,6 @@ Run this against your workflow before submitting. Every item maps to a rule abov
 [ ] No ${{ }} expressions of any kind in run: blocks (Rule 1)
 [ ] No secrets: inherit — all secrets explicitly mapped (Rule 2)
 [ ] Every uses: reference is SHA-pinned with version comment (Rule 3)
-    Exception: a trusted reusable-workflow repo you control with branch protection
 [ ] All actions are on the org allowlist (Rule 4)
 [ ] Third-party actions replaced with native alternatives where feasible (Rule 4)
 [ ] Top-level permissions: block with least privilege (Rule 5)
