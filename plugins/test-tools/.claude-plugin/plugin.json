@@ -1,0 +1,16 @@
+{
+  "name": "test-tools",
+  "version": "0.1.0",
+  "description": "Investigate and fix flaky tests across frameworks and CI systems.",
+  "author": {
+    "name": "Fin 2x"
+  },
+  "keywords": [
+    "flaky-tests",
+    "testing",
+    "ci",
+    "rspec",
+    "reliability"
+  ],
+  "license": "MIT"
+}

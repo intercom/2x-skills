@@ -1,0 +1,16 @@
+{
+  "name": "claude-code-tools",
+  "version": "0.1.0",
+  "description": "Meta-tools for running Claude Code well: audit your permission allowlist, fix local toolchain gaps, and analyze usage costs.",
+  "author": {
+    "name": "Fin 2x"
+  },
+  "keywords": [
+    "claude-code",
+    "permissions",
+    "cost",
+    "telemetry",
+    "tooling"
+  ],
+  "license": "MIT"
+}
