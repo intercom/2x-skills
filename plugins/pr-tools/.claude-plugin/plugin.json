@@ -1,0 +1,15 @@
+{
+  "name": "pr-tools",
+  "version": "0.1.0",
+  "description": "Open well-formed GitHub pull requests from Claude Code and attach screenshots and recordings to them.",
+  "author": {
+    "name": "Fin 2x"
+  },
+  "keywords": [
+    "github",
+    "pull-request",
+    "pr",
+    "workflow"
+  ],
+  "license": "MIT"
+}
