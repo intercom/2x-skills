@@ -14,6 +14,11 @@
       "name": "security-tools",
       "source": "./plugins/security-tools",
       "description": "Harden GitHub Actions workflows against supply-chain and injection attacks."
+    },
+    {
+      "name": "pr-tools",
+      "source": "./plugins/pr-tools",
+      "description": "Open well-formed GitHub pull requests from Claude Code and attach screenshots and recordings to them."
     }
   ]
 }
