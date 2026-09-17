@@ -15,7 +15,7 @@ Upload local files to GitHub via `uploads.github.com/user-attachments/assets`.
 
 ## Contract: if loaded, run the script
 
-**This skill exists to call `upload.sh`. If it is loaded with a local file path in context, you MUST run the script — do not describe the flow, do not propose markdown without uploading, do not stop after acknowledging the request.** The only correct trajectory ends with a `gh`/`curl`-backed upload and a returned asset URL.
+**This skill exists to call `upload.sh`. If it is loaded with a local file path in context, you MUST run the script — do not describe the flow, do not propose markdown without uploading, do not stop after acknowledging the request.** The only correct trajectory ends with a `gh`/`curl`-backed upload and either a returned asset URL or a posted comment.
 
 If no local file path is present and none can be inferred from conversation, output `no-op: no local file path` and exit — do NOT call `upload.sh` with a placeholder, a remote URL, or a guessed path.
 
@@ -48,7 +48,20 @@ If you have been loaded but none of the "When to Self-Invoke" conditions are met
 
 `upload.sh` itself errors on missing files (`File not found: <path>`), so do not pre-gate on existence — pass the user's path through and surface the script's error verbatim if it fails.
 
-### Step 2: Run the upload script — once per file
+### Step 2: Run the upload script
+
+The script has two modes. Pick by one fact — **where do the files have to end up?** Never by weighing mechanisms: the script chooses between native `gh --attach` and a direct upload itself, so there is nothing to decide beyond the mode.
+
+**A new comment on a named issue or PR** → post it in one call, all files at once:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/attach-github-assets/scripts/upload.sh \
+  --post-to <pr|issue>:<number> [--repo OWNER/REPO] [--body "<text>"] "<file-path>" ["<other-file>" ...]
+```
+
+Prints the comment URL. Use `pr:` for a pull request and `issue:` for an issue — the wrong one errors. This mode uses `gh ... comment --attach` when the installed `gh` has it (v2.99.0+) and otherwise uploads and composes the body itself; both produce the same comment, so no version check is needed here.
+
+**Anywhere else** → print the asset URL, **once per file**, for embedding in a body assembled elsewhere:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/attach-github-assets/scripts/upload.sh "<file-path>"
@@ -62,9 +75,13 @@ To override repo ID (e.g. uploading from a worktree whose remote isn't the targe
 ${CLAUDE_PLUGIN_ROOT}/skills/attach-github-assets/scripts/upload.sh "<file-path>" <repo_id>
 ```
 
-Run the script **once per file** — never batch into a single invocation, never substitute `curl` or a different upload mechanism.
+In this mode run the script **once per file** — never batch into a single invocation, because the second positional argument is read as the repo ID. Never substitute `curl`, a bare `gh` command, or any other upload mechanism for the script.
+
+A named PR or issue does **not** by itself mean `--post-to`. A **PR or issue body** — "put these in PR #123's description", "add this to the issue body" — is this mode, not the comment mode: `--post-to` writes a separate comment and returns no URL, so the body it was meant for would stay unchanged. Use this mode for a body, and let whoever owns that body write the markdown from Step 3 into it.
 
 ### Step 3: Return markdown for the returned URL(s)
+
+Only for the no-target mode; `--post-to` has already written the comment.
 
 - **Images** (png, jpg, jpeg, gif, webp, svg) → `![{filename}]({url})`
 - **Videos** (mov, mp4, webm) → paste the URL on its own line; GitHub auto-renders video URLs and `![]()` would break that.

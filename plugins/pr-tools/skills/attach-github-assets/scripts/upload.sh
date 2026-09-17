@@ -3,91 +3,198 @@
 # Requires: gh, curl, jq
 set -euo pipefail
 
-FILE_PATH="${1:-}"
-REPO_ID="${2:-}"
+SUPPORTED="png, jpg, jpeg, gif, webp, svg, mov, mp4, webm"
 
-if [[ -z "$FILE_PATH" ]]; then
-  echo "Usage: upload.sh <file-path> [repository_id]" >&2
-  exit 1
-fi
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  upload.sh <file-path> [repository_id]
+      Upload one file and print its asset URL.
 
-if [[ ! -f "$FILE_PATH" ]]; then
-  echo "Error: File not found: $FILE_PATH" >&2
-  exit 1
-fi
+  upload.sh --post-to <pr|issue>:<number> [--repo OWNER/REPO] [--body TEXT] <file-path>...
+      Upload files and post them as one comment, preferring `gh ... --attach`.
+EOF
+}
 
-# Get auth token
-TOKEN=$(gh auth token 2>/dev/null) || {
-  echo "Error: gh auth token failed. Run 'gh auth login' first." >&2
+die() {
+  echo "Error: $*" >&2
   exit 1
 }
 
-# Auto-detect repo ID if not provided
-if [[ -z "$REPO_ID" ]]; then
-  # Try to get owner/repo from git remote
-  REMOTE_URL=$(git remote get-url origin 2>/dev/null || echo "")
-  if [[ -n "$REMOTE_URL" ]]; then
-    # Extract owner/repo from SSH or HTTPS remote URL
-    OWNER_REPO=$(echo "$REMOTE_URL" | sed -E 's#(git@github\.com:|https://github\.com/)##; s#\.git$##')
-    REPO_ID=$(gh api "repos/$OWNER_REPO" --jq '.id' 2>/dev/null || echo "")
+mime_for() {
+  case "$(printf '%s' "${1##*.}" | tr '[:upper:]' '[:lower:]')" in
+    png) echo image/png ;;
+    jpg | jpeg) echo image/jpeg ;;
+    gif) echo image/gif ;;
+    webp) echo image/webp ;;
+    svg) echo image/svg+xml ;;
+    mov) echo video/quicktime ;;
+    mp4) echo video/mp4 ;;
+    webm) echo video/webm ;;
+    *) return 1 ;;
+  esac
+}
+
+# bash 3.2 (macOS default) mishandles quoting in ${var//pattern/repl}, so this replaces literally.
+replace_all() {
+  local hay="$1" needle="$2" repl="$3" out=""
+  while [[ "$hay" == *"$needle"* ]]; do
+    out="${out}${hay%%"$needle"*}${repl}"
+    hay="${hay#*"$needle"}"
+  done
+  printf '%s' "${out}${hay}"
+}
+
+validate_file() {
+  [[ -f "$1" ]] || die "File not found: $1"
+  mime_for "$1" >/dev/null || die "Unsupported file type '.${1##*.}'. Supported: $SUPPORTED"
+}
+
+resolve_repo_id() {
+  local slug="$1" id
+  if [[ -z "$slug" ]]; then
+    slug=$(git remote get-url origin 2>/dev/null |
+      sed -E 's#(git@github\.com:|https://github\.com/)##; s#\.git$##')
+    [[ -n "$slug" ]] || die "Could not detect repository. Pass a repository_id, or --repo OWNER/REPO."
   fi
+  id=$(gh api "repos/$slug" --jq .id 2>/dev/null) || die "Could not resolve repository id for $slug."
+  echo "$id"
+}
 
-  if [[ -z "$REPO_ID" ]]; then
-    echo "Error: Could not detect repository ID. Pass it as second argument." >&2
+upload_one() {
+  local file="$1" repo_id="$2" name mime encoded_name encoded_mime token response code body url
+
+  token=$(gh auth token 2>/dev/null) || die "gh auth token failed. Run 'gh auth login' first."
+
+  name=$(basename "$file")
+  mime=$(mime_for "$name")
+  encoded_name=$(printf '%s' "$name" | jq -sRr @uri)
+  encoded_mime=$(printf '%s' "$mime" | jq -sRr @uri)
+
+  response=$(curl -s -w "\n%{http_code}" \
+    "https://uploads.github.com/user-attachments/assets?name=${encoded_name}&content_type=${encoded_mime}&repository_id=${repo_id}" \
+    -X POST \
+    -H "Content-Type: application/octet-stream" \
+    -H "Accept: application/json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    -H "Authorization: Bearer $token" \
+    --data-binary "@$file")
+
+  code=$(echo "$response" | tail -1)
+  body=$(echo "$response" | sed '$d')
+  [[ "$code" == "201" ]] || die "Upload failed with HTTP $code: $body"
+
+  url=$(echo "$body" | jq -r '.url // empty')
+  [[ -n "$url" ]] || die "No URL in response: $body"
+  echo "$url"
+}
+
+POST_TO=""
+REPO_SLUG=""
+BODY=""
+FILES=()
+
+need() { [[ $# -ge 2 && -n "$2" ]] || die "$1 needs a value"; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --post-to)
+      need "$@"
+      POST_TO="$2"
+      shift 2
+      ;;
+    --repo)
+      need "$@"
+      REPO_SLUG="$2"
+      shift 2
+      ;;
+    --body)
+      need "$@"
+      BODY="$2"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --*)
+      usage
+      die "Unknown flag: $1"
+      ;;
+    *)
+      FILES+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$POST_TO" ]]; then
+  [[ ${#FILES[@]} -gt 0 ]] || {
+    usage
     exit 1
-  fi
+  }
+  validate_file "${FILES[0]}"
+  REPO_ID="${FILES[1]:-}"
+  [[ -n "$REPO_ID" ]] || REPO_ID=$(resolve_repo_id "")
+  upload_one "${FILES[0]}" "$REPO_ID"
+  exit 0
 fi
 
-# Determine MIME type from extension
-FILENAME=$(basename "$FILE_PATH")
-EXT="${FILENAME##*.}"
-EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+KIND="${POST_TO%%:*}"
+NUMBER="${POST_TO#*:}"
+[[ "$KIND" == "pr" || "$KIND" == "issue" ]] || die "--post-to must be pr:<number> or issue:<number>, got '$POST_TO'"
+[[ "$NUMBER" =~ ^[1-9][0-9]*$ ]] || die "--post-to needs a positive number, got '$NUMBER'"
+[[ ${#FILES[@]} -gt 0 ]] || die "--post-to needs at least one file"
+# gh caps --attach at 50; enforced here so the outcome doesn't depend on the installed gh.
+[[ ${#FILES[@]} -le 50 ]] || die "--post-to takes at most 50 files, got ${#FILES[@]}. Split them across calls."
 
-case "$EXT_LOWER" in
-  png)  MIME="image/png" ;;
-  jpg|jpeg) MIME="image/jpeg" ;;
-  gif)  MIME="image/gif" ;;
-  webp) MIME="image/webp" ;;
-  svg)  MIME="image/svg+xml" ;;
-  mov)  MIME="video/quicktime" ;;
-  mp4)  MIME="video/mp4" ;;
-  webm) MIME="video/webm" ;;
-  *)
-    echo "Error: Unsupported file type '.$EXT_LOWER'. Supported: png, jpg, jpeg, gif, webp, svg, mov, mp4, webm" >&2
-    exit 1
-    ;;
-esac
+# Uploads can't be undone, so validate every file before uploading any.
+for f in "${FILES[@]}"; do
+  validate_file "$f"
+done
 
-# URL-encode filename and mime type
-ENCODED_NAME=$(printf '%s' "$FILENAME" | jq -sRr @uri)
-ENCODED_MIME=$(printf '%s' "$MIME" | jq -sRr @uri)
+REPO_FLAG=()
+[[ -n "$REPO_SLUG" ]] && REPO_FLAG=(--repo "$REPO_SLUG")
 
-# Upload
-RESPONSE=$(curl -s -w "\n%{http_code}" \
-  "https://uploads.github.com/user-attachments/assets?name=${ENCODED_NAME}&content_type=${ENCODED_MIME}&repository_id=${REPO_ID}" \
-  -X POST \
-  -H "Content-Type: application/octet-stream" \
-  -H "Accept: application/json" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  -H "Authorization: Bearer $TOKEN" \
-  --data-binary "@$FILE_PATH")
+GH_ARGS=("$KIND" comment "$NUMBER" ${REPO_FLAG[@]+"${REPO_FLAG[@]}"})
 
-# Split response body and HTTP status
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
+if gh "$KIND" comment --help 2>/dev/null | grep -q -- '--attach'; then
+  [[ -n "$BODY" ]] && GH_ARGS+=(--body "$BODY")
+  for f in "${FILES[@]}"; do
+    GH_ARGS+=(--attach "$f")
+  done
+else
+  # No --attach: upload and compose ourselves. Refuse two body forms gh's markdown
+  # machinery would rewrite (reference-style links, video-as-image-embed) rather than diverge.
+  for f in "${FILES[@]}"; do
+    if [[ "$BODY" =~ \][[:space:]]*:[[:space:]]*"$f" ]]; then
+      die "This gh has no --attach, and a reference-style link to $f cannot be rewritten faithfully. Upgrade gh to 2.99.0+, or write the reference as [alt]($f)."
+    fi
+    if [[ "$BODY" == *"!["*"]($f)"* && "$(mime_for "$f")" == video/* ]]; then
+      die "This gh has no --attach, and a video written as an image embed cannot be rewritten faithfully. Upgrade gh to 2.99.0+, write it as [alt]($f), or drop the reference and let it be appended."
+    fi
+  done
 
-if [[ "$HTTP_CODE" != "201" ]]; then
-  echo "Error: Upload failed with HTTP $HTTP_CODE" >&2
-  echo "$BODY" >&2
-  exit 1
+  # Confirm the target exists first — a wrong number would orphan every upload.
+  gh "$KIND" view "$NUMBER" ${REPO_FLAG[@]+"${REPO_FLAG[@]}"} --json id >/dev/null 2>&1 ||
+    die "No $KIND #$NUMBER to comment on${REPO_SLUG:+ in $REPO_SLUG}."
+
+  REPO_ID=$(resolve_repo_id "$REPO_SLUG")
+  COMPOSED="$BODY"
+  for f in "${FILES[@]}"; do
+    url=$(upload_one "$f" "$REPO_ID")
+    REF="]($f)"
+    if [[ "$COMPOSED" == *"$REF"* ]]; then
+      # Match gh --attach: repoint an existing reference rather than appending a copy.
+      COMPOSED=$(replace_all "$COMPOSED" "$REF" "]($url)")
+    elif [[ "$(mime_for "$f")" == video/* ]]; then
+      # A video URL must stand alone for GitHub to render it; ![](…) breaks that.
+      COMPOSED="${COMPOSED}"$'\n\n'"${url}"
+    else
+      COMPOSED="${COMPOSED}"$'\n\n'"![$(basename "$f")]($url)"
+    fi
+  done
+  GH_ARGS+=(--body "$COMPOSED")
 fi
 
-# Extract URL from response
-URL=$(echo "$BODY" | jq -r '.url // empty')
-if [[ -z "$URL" ]]; then
-  echo "Error: No URL in response: $BODY" >&2
-  exit 1
-fi
-
-# Output the URL
-echo "$URL"
+exec gh "${GH_ARGS[@]}"
