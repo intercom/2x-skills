@@ -1,6 +1,6 @@
 {
   "name": "claude-code-tools",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Meta-tools for running Claude Code well: audit your permission allowlist, fix local toolchain gaps, analyze usage costs, and prune stale saved memories.",
   "author": {
     "name": "Fin 2x"

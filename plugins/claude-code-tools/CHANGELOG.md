@@ -5,6 +5,12 @@ All notable changes to the `claude-code-tools` plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-09-17
+
+### Changed
+
+- `cc-cost-analysis` — new `references/command-attribution.md` for separating genuine command-level waste from wasteful commands that ride along with real work, plus caveats on weighting tokens per model, treating self-reported cost fields as estimates, cache TTL after an idle gap, excluding automated eval traffic, and estimating compaction cost from a call's token signature.
+
 ## [0.2.0] - 2026-09-17
 
 ### Added

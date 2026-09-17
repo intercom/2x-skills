@@ -1,6 +1,6 @@
 {
   "name": "pr-tools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Open well-formed GitHub pull requests from Claude Code and attach screenshots and recordings to them.",
   "author": {
     "name": "Fin 2x"
