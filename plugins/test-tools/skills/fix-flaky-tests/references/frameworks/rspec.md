@@ -1,8 +1,8 @@
 # Framework: RSpec (Ruby / Rails)
 
 How the generic flake categories (`references/classification-generic.md`) manifest in
-RSpec, plus the RSpec-only mechanics, detection commands, and reproduction commands. This
-file is framework-level — it applies to any RSpec/Rails app. Product-specific patterns
+RSpec, plus the RSpec-only mechanics, detection commands, and what CI evidence RSpec can
+yield. This file is framework-level — it applies to any RSpec/Rails app. Product-specific patterns
 (particular services, error classes, infra) live in the app profile, e.g.
 `references/profiles/your-app.md` (add your own — none ship by default).
 
@@ -19,18 +19,41 @@ git log --oneline -1 -- <spec_file>   # who skipped it, and when
 A skip is never a valid fix. Revert it as part of the real fix (revert + fix root cause in
 one PR if the root cause isn't yet fixed; revert alone if it is).
 
-## Reproduction commands
+## Reproduction on CI
 
-State-poisoning and ordering flakes CAN reproduce locally with the right seed and spec
-list (everything else is usually CI-only — see `references/ci-only-flakes.md`):
+No local `bundle exec rspec` run, ever — not for reproduction, not for verification. That
+part is unconditional.
 
-```bash
-bundle exec rspec --seed <seed> <poisoner_spec> <victim_spec>   # ordering / poisoning
-bundle exec rspec --seed <seed> <spec_list_from_ci>             # replay the CI bin
-```
+Whether a *CI-side* replay is available is not. It depends on how the pipeline assigns specs
+to shards, so check the provider and profile files. Where the pipeline re-shards on every
+build, you cannot make it re-run the failing shard's spec list together, and a committed
+`--seed` alone reproduces nothing once those specs land in different shards. Where it can
+re-run a named shard, take that option.
 
-Limit to 2 attempts per hypothesis. If it passes twice, the flake is CI-only; stop running
-locally and switch to measurement-driven verification.
+When no replay is available, the failing run's evidence is what you work from. What that
+evidence contains is set by the formatter the pipeline invokes, so read the provider and
+profile files rather than assuming — the RSpec-level facts are only these two:
+
+- **A per-example execution order exists in the output only under `--format json` or
+  `--format documentation`.** Under `--format progress` (RSpec's CI default in most setups)
+  the body of the run is dots, and no ordering survives. Where a pipeline does emit JSON, it
+  may still land somewhere the available tooling cannot read — check before planning an
+  investigation around retrieving one.
+- **The seed alone does not give you an order.** RSpec permutes from the seed *and* the set
+  of loaded files, so file load order tells you nothing about execution order, and the same
+  seed over a different file set is a different permutation.
+
+What is normally recoverable is which spec files ran alongside the victim. That is the
+candidate set for the poisoner: read those files' cleanup code against the state the victim
+depends on. Treat co-residency plus the cleanup code as the evidence you have.
+
+So if reading the co-resident specs' cleanup code cannot close the mechanism, stop and report
+— see the hard rule in `SKILL.md`. Measurement-driven verification is for checking a fix you
+already have, not for finding a mechanism you don't.
+
+Every other category — timing, suffix collision, thread-boundary, external-service — is
+usually CI-only regardless (see `references/ci-only-flakes.md`); don't bother pinning a
+seed for those, go straight to diagnosis and fix.
 
 ## RSpec-specific manifestations
 

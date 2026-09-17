@@ -12,8 +12,8 @@ idioms, and `references/profiles/<app>.md` for product-specific instances.
 | **Test-ordering dependency** | Shared database/fixture state leaks between tests; suite-level setup (`before(:all)`, module-scoped fixtures) has side effects. | Isolate per-test setup/teardown. Avoid suite-scoped mutable state. |
 | **Timing / race condition** | Wall-clock or time-window assertions without a frozen clock; async expectations without synchronization; polling with too-short waits. | Freeze/inject time; await the condition explicitly; widen synchronization, not sleeps. |
 | **Shared-singleton collision** | A test double or factory uses a hardcoded key into a process-wide store (in-memory client, cache, registry). Parallel tests overwrite each other's data. | Use a unique key per instance (UUID/random suffix). |
-| **Suffix / identifier collision under parallelism** | Wrong record found. Identifier built from a low-resolution source (second-precision timestamp, small random range) collides across many parallel workers. | Append high-entropy uniqueness (e.g. a random hex suffix). Never rely on second-precision timestamps or tiny random ranges for cross-worker uniqueness. |
-| **Cache TTL expiration** | Test writes to a real cache with a short TTL; under load the entry expires before the code reads it. | Lengthen the TTL for the test context, or use an in-memory fake. |
+| **Suffix / identifier collision** | Wrong record found. Identifier built from a low-resolution source (second-precision timestamp, small random range) collides when many tests share a datastore within the same low-resolution window — whether workers run in parallel or a single worker runs a fast sequential batch. | Append high-entropy uniqueness (e.g. a random hex suffix). Never rely on second-precision timestamps or tiny random ranges for uniqueness. |
+| **Cache TTL expiration** | Test writes to a real cache with a short TTL; the entry expires because wall-clock time elapses between the write and a later read. | Lengthen the TTL for the test context, or use an in-memory fake. |
 | **Resource exhaustion / infrastructure** | OOM kills, connection-pool exhaustion, datastore-cluster pressure. **Build-wide pattern** — many unrelated tests fail in the same run. | Investigate infrastructure, not the test. Do NOT skip. See the infra fast-exit in `SKILL.md`. |
 | **External-service flake** | Network timeouts, third-party API errors in CI; passes locally where the service is mocked or reachable. | Improve mocking/isolation so the test doesn't depend on a live external call. |
 | **Non-deterministic ordering of results** | Positional assertions (`result[0]`) fail because the underlying query/collection has no defined order. | Assert by membership/match, not position; or impose an explicit order. |
@@ -25,7 +25,7 @@ idioms, and `references/profiles/<app>.md` for product-specific instances.
 
 - Passes on retry within the same run → test-side issue (state, ordering, timing), not infra-on-its-own.
 - All tests in a file fail every run, any order → broken by a code change, not flaky.
-- Many unrelated files fail in one run → infrastructure; take the fast-exit.
+- Many unrelated files fail in one run *with connection/resource errors* (not assertion failures) → infrastructure; take the fast-exit. Many unrelated files failing with assertion errors is a shared code or fixture break, not infra.
 
 ## Adding a category
 

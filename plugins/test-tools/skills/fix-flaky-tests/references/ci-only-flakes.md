@@ -1,33 +1,44 @@
-# CI-Only Flakes: Why Local Reproduction Fails
+# CI-Only Flakes: Local Reproduction Is Out of Bounds
 
-Many flakes never reproduce locally because they depend on conditions that only exist in
-CI: **concurrency** (many parallel workers sharing backing services), **load** (slow
-responses, timeouts, contention), and **environment** (real datastores, different configs,
-clean process state). A test that passes 100/100 times locally can fail 1/10 in CI because
-these introduce non-determinism a single dev machine doesn't have.
+Local test runs are never a sanctioned diagnostic step, for any category. What follows
+explains why these categories in particular would give zero signal locally regardless, and
+the CI-side techniques that replace a local run.
 
-This file is framework- and CI-agnostic. For the concrete scale and shared-service facts of
-a specific app (e.g. a large test suite's parallel worker count and real
-memcached/DynamoDB/Redis/ES backing services), see that app's profile, e.g.
-`references/profiles/your-app.md` — add your own if useful.
+Many flakes never reproduce locally, but the reason is usually **not** raw resource
+pressure. The conditions that actually matter: **real backing services** (a real
+datastore/cache with persistent state, instead of a local stub or a clean process),
+**test ordering and cross-test state** (many CIs run a large, often random-ordered batch,
+so an earlier test's residue reaches a later one — check the runner model, since some CIs
+isolate each test), and **wall-clock timing** (real time elapses between operations).
+Genuine resource **load** is a comparatively rare cause, and when it *is* the cause it
+**usually** presents as a **timeout or an OOM kill**, not as a wrong value, a wrong record,
+or a mismatched assertion (on some runners an eventual-consistency, retry, or fallback path
+can surface load as a wrong value — but that is the exception, not the default). Treat "it
+was just under load / CI was busy" as a hypothesis to prove from the actual error, not a
+default. A test that passes 100/100 locally can fail 1/10 in CI because of these conditions,
+not because CI is slower.
+
+Whether CI workers share backing services or each gets its own is **app-specific — check the
+app profile** (e.g. isolated per-worker sidecars running tests sequentially vs. many workers
+sharing one datastore concurrently produce very different flake mechanisms). See that app's
+profile, e.g. `references/profiles/your-app.md` — add your own if useful.
 
 ## Categories that rarely reproduce locally
 
 | Category | Why local passes | What to do instead |
 |----------|------------------|--------------------|
-| Suffix / identifier collision | Low-resolution identifiers are unique on one machine; collide across many parallel workers | Fix: append high-entropy uniqueness to the identifier |
-| Thread-boundary cache staleness | Caches only go stale under parallel access patterns | Fix: stub at the boundary the other thread crosses |
-| Cache TTL expiration | Cache ops are fast locally, slow under CI load | Fix: lengthen TTL for the test, or use an in-memory fake |
-| Lock / resource contention | No contention with one process | Fix: stub the lock/resource when not under test |
-| Background-thread DB race | Transaction-rollback races only matter with concurrent threads | Fix: stub the method that spawns the background work |
+| Suffix / identifier collision | Low-resolution identifiers (e.g. second-precision timestamps) are unique when tests run minutes apart locally, but collide when a CI batch runs many tests against one datastore in the same second (whether workers are parallel or a single worker runs a fast sequential batch) | Fix: append high-entropy uniqueness to the identifier |
+| Thread-boundary cache staleness | A cache populated on one thread is read on another (e.g. a server thread vs the test thread). The split exists wherever the code runs across threads (browser driver, background worker) — a naive single-threaded local run just doesn't exercise it, so it surfaces in CI | Fix: stub at the boundary the other thread crosses |
+| Cache TTL expiration | Locally the read follows the write immediately; in CI more wall-clock time elapses between them, so a short TTL expires first | Fix: lengthen TTL for the test, or use an in-memory fake |
+| Lock / resource contention | No contention with one process; or a real lock taken by earlier code in the batch is never released | Fix: stub the lock/resource when not under test |
+| Background-thread DB race | The code under test spawns a thread whose DB call races the test's transaction rollback — only manifests when that async path runs | Fix: stub the method that spawns the background work |
 
-For these, local runs give zero signal. Limit local attempts to 2 per hypothesis; if it
-passes twice, switch to measurement-driven verification.
+For these, a local run would give zero signal even if it were allowed — which it isn't. Go
+straight to the fix and verify with measurement-driven verification (below).
 
 ## Measurement-driven verification
 
-When local runs can't reproduce the flake, verify a fix by comparing CI failure rates
-across two branches:
+Verify a fix by comparing CI failure rates across two branches:
 
 1. **Baseline branch** (no fix): push the unchanged test, trigger N CI builds, record the
    pass rate — excluding infrastructure noise (e.g. browser crashes).
@@ -53,19 +64,29 @@ computing pass rates. If *every* failure in a batch is infra noise, the measurem
 unreliable and the test may not be flaky at all. See the framework file for how its
 browser/driver failures look.
 
-## When local verification IS useful
+## Ordering / state-poisoning flakes: read the shard, don't replay it
 
-For **test-ordering** or **state-poisoning** flakes, local reproduction with the correct
-seed and test list often works — see the framework file for the exact replay command. If it
-reproduces, iterate locally (limit 2 attempts). Otherwise treat it as CI-only.
+These are the flakes people reach for a replay on. Whether one is even available depends on
+the pipeline, so settle that from the provider and profile files first. **Where the pipeline
+re-shards on every build, there is nowhere to run one:** it decides which tests share a
+shard, so neither a local run nor a scratch branch can re-assemble the failing shard's test
+list, and a pinned seed on its own reproduces nothing once those tests are split across
+shards. Where a pipeline can re-run a named shard, that is a CI-side option worth taking.
 
-## Decision table: local vs CI verification
+Either way the failing run's log is the first evidence: the seed and the test files that
+shared the shard. Read those co-resident files' cleanup code against the state the victim
+depends on to establish the mechanism. Don't assume a per-example execution order is in
+there — what the log exposes is provider- and framework-specific. Co-residency plus the seed
+is normally the whole of it. If code reading still can't close the mechanism, stop and
+report; do not measure a speculative fix.
 
-| Situation | Local useful? | Strategy |
-|-----------|--------------|----------|
-| State poisoning / ordering with known seed | Yes | Replay seed + test list, iterate locally |
-| Suffix / identifier collision | No | Fix the identifier, push PR, monitor CI |
-| Thread-boundary / cache staleness | No | Fix the stub, push PR, monitor CI |
-| Browser/driver crash noise | No (noise) | Push PR, monitor CI, ignore crashes |
-| Infrastructure (datastore unavailable) | No (no code fix) | Close the issue |
-| Unknown / low confidence | No | Do NOT push a speculative fix — document findings on the issue, gather more CI failure samples, escalate to the owning team |
+## Decision table: strategy by category
+
+| Situation | Strategy |
+|-----------|----------|
+| State poisoning / ordering with known seed | Read the failing shard's test list from the CI log, fix the poisoner, monitor CI |
+| Suffix / identifier collision | Fix the identifier, push PR, monitor CI |
+| Thread-boundary / cache staleness | Fix the stub, push PR, monitor CI |
+| Browser/driver crash noise | Push PR, monitor CI, ignore crashes (noise) |
+| Infrastructure (datastore unavailable) | Close the issue (no code fix) |
+| Unknown / low confidence | Do NOT push a speculative fix — document findings on the issue, gather more CI failure samples, escalate to the owning team |

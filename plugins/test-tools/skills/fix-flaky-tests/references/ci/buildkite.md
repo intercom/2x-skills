@@ -28,16 +28,24 @@ logs.
 
 ## If logs are unavailable
 
-API not connected, timing out, logs expired, or the log search returns nothing useful — ask
-the user to paste the error verbatim:
+API not connected, timing out, logs expired, or the log search returns nothing useful — the
+branch depends on whether a user can answer (see the HARD GATE in `SKILL.md`).
+
+**Interactive caller** — ask the user to paste the error verbatim:
 
 > I couldn't get the CI error from Buildkite (reason: …). Can you paste the exception and
 > backtrace from the failing job, or check that Buildkite access is configured so I can
 > fetch it?
 
-A user-pasted error is equivalent to a Buildkite-fetched one for the HARD GATE. Do not
-retry failing Buildkite calls more than twice in a session. Code-only analysis is never an
-acceptable substitute.
+A user-pasted error is equivalent to a Buildkite-fetched one for the HARD GATE.
+
+**Headless caller** (no interactive user to answer — an automated or scheduled invocation
+with nobody to ask; if unsure, assume headless) — do NOT ask a user who will never answer. It
+is 100% unsafe to proceed: return the **CI-Logs-Unavailable Abort** from `SKILL.md` and stop
+(no diagnosis, no PR, no comment).
+
+Do not retry failing Buildkite calls more than twice in a session. Code-only analysis is
+never an acceptable substitute.
 
 ## `cancel_running_branch_builds` limitation (affects A/B verification)
 

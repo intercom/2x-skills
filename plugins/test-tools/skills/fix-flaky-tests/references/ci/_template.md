@@ -21,9 +21,13 @@ attaching logs to a new run, matrix jobs splitting output, artifact-only test re
 
 ## If logs are unavailable
 
-The HARD GATE still applies. If logs can't be retrieved (auth, retention, API down), ask
-the user to paste the exception and backtrace verbatim. A user-pasted error is equivalent
-for the gate. Code-only analysis is never a substitute.
+The HARD GATE still applies. If logs can't be retrieved (auth, retention, API down): an
+**interactive caller** asks the user to paste the exception and backtrace verbatim (a
+user-pasted error is equivalent for the gate). A **headless caller** (no interactive user to
+answer — an automated or scheduled invocation with nobody to ask; if unsure, assume headless)
+must NOT wait on an unavailable user — return the **CI-Logs-Unavailable Abort** from
+`SKILL.md` and stop (no diagnosis, no PR, no comment). Code-only analysis is never a
+substitute.
 
 ## A/B verification constraints
 
