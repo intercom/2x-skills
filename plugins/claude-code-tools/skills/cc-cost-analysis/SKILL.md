@@ -33,6 +33,7 @@ Each dimension answers a different question. Run whichever are relevant — ther
 | Compaction | Are sessions hitting context limits? | Section 5 |
 | Per-user profiles | Who are the heaviest users and why? | Section 6 |
 | Instructions & skills | How much do CLAUDE.md/rules/skills cost? | Section 7 |
+| Command-level waste | Which specific commands are wasteful vs bundled with real work? | `references/command-attribution.md` |
 
 Apply cost formulas from `references/cost-model.md` when computing dollar estimates from token counts.
 
@@ -95,16 +96,21 @@ Classify users by what % of their calls exceed a large cache_read threshold (Sec
 
 **Instructions are a small share:** CLAUDE.md files, rules, and skills are a small fraction of total spend. The real cost drivers are session length and context accumulation from tool results.
 
+**Turn-counts overcount command-level waste:** a wasteful command (polling, re-auth, a bare sleep, a no-op) bundled into a turn that also does real work bills cache-read for that turn regardless — the marginal waste is close to zero. Classifying "turns containing pattern X" as waste massively overcounts. Separate standalone waste from bundled work by inspecting the actual command strings, and always back a dollar figure with atoms → examples → a reproducible query → an independent cross-check. See `references/command-attribution.md`.
+
+**Automated eval/test traffic pollutes usage totals:** if you (or your telemetry pipeline) run automated eval or regression suites through Claude Code, that traffic is not real engineer usage. Tag or otherwise identify it in your export and exclude it from normal cost/context/compaction analysis; run a separate, intentionally-scoped query when you want to measure what the eval suite itself costs.
+
 ## Generating Reports
 
 Capture findings in markdown reports. See `references/report-templates.md` for standard structures. Name files `{report-type}-{YYYY-MM-DD}.md`.
 
 ## Reference Files
 
-- **`references/queries.md`** — Example Honeycomb queries organized by analysis dimension
-- **`references/cost-model.md`** — Token pricing ratios, per-call/per-session cost formulas, caching economics
-- **`references/report-templates.md`** — Standard report structures for each analysis type
-- **`references/column-gotchas.md`** — Data-quality gotchas specific to cost analysis
+- **`references/queries.md`** — Example Honeycomb queries organized by analysis dimension. Load when composing a query for a specific analysis dimension.
+- **`references/cost-model.md`** — Token pricing ratios, per-call/per-session cost formulas, caching economics. Load when a finding needs a dollar estimate, not just a raw count.
+- **`references/report-templates.md`** — Standard report structures for each analysis type. Load before writing up findings.
+- **`references/column-gotchas.md`** — Data-quality gotchas specific to cost analysis. Load before trusting a cost or sequence column you haven't queried before.
+- **`references/command-attribution.md`** — Attributing cost to specific command patterns (waste vs bundled with real work). Load when classifying whether a costly command is standalone waste or bundled with real work.
 
 ## Scripts
 

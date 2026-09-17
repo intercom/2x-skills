@@ -6,6 +6,8 @@ Data-quality gotchas specific to analyzing Claude Code cost telemetry. Field nam
 
 Token counts and cost are sometimes exported as strings. Aggregating a string column with `SUM`/`AVG` returns null. Cast first with a calculated field, e.g. `{"name": "cost_f", "expression": "FLOAT($cost_usd)"}`, then aggregate `cost_f`. The example queries use a pre-cast `cost_usd_float` column; adapt to your schema.
 
+This can drift over time: a backend or pipeline upgrade can make a previously string-typed column natively numeric (making your cast redundant but harmless), or remove a derived column you'd assumed existed (making the query fail outright). Re-verify column types with a schema check before trusting an old query as-is, especially one written more than a few months ago.
+
 ## Cost is only meaningful on API-request events
 
 A per-call cost value is only populated on the event that represents an API request (`event.name = "api_request"` in the examples). On hook events, tool events, etc. it is typically 0 or null. Always filter to the API-request event when summing cost.
