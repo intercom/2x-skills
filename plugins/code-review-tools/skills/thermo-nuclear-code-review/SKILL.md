@@ -212,4 +212,3 @@ Do not approve merely because behavior seems correct. The bar is: **no violation
 - The PR scatters feature checks across shared code instead of isolating them
 - The PR duplicates an existing helper or puts logic in the wrong layer
 - The PR adds a worker without idempotency guarantees
-</content>
