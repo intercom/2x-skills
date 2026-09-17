@@ -86,8 +86,14 @@ correct logs were fetchable. Always reconcile the provider with the URL the user
 | `.circleci/config.yml` | CircleCI | `references/ci/<circleci>.md` if present, else `_template.md` |
 | `.github/workflows/*.yml` running tests | GitHub Actions | `references/ci/<github-actions>.md` if present, else `_template.md` |
 
-If a repo matches more than one signal and no URL disambiguates, ask the user which CI ran the
-failing job rather than guessing.
+If a repo matches more than one signal and no URL disambiguates, provider ambiguity only
+matters when you still need to *fetch* the CI error. If the exception + backtrace is already
+in the prompt, the gate is satisfied — proceed without picking a provider. If you still need
+to fetch it: an **interactive caller** asks the user which CI ran the failing job rather than
+guessing; a **headless caller** (no interactive user to answer — an automated or scheduled
+invocation with nobody to ask; if unsure, assume headless) has no one to answer and cannot
+establish the CI error, so it returns the **CI-Logs-Unavailable Abort** from `SKILL.md` and
+stops rather than guessing a provider.
 
 Only `ci/buildkite.md` ships fully fleshed today. For any other provider, the HARD GATE
 still applies — get the real CI error from that provider's UI/API/logs, or ask the user to

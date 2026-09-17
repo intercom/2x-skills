@@ -9,18 +9,18 @@ Placement + triggering. Six concerns live here:
 3. **Hook integration** — whether a deterministic trigger event would improve how the skill fires.
 4. **Repo-convention adherence** — does the skill follow the repo's own documented frontmatter/authoring conventions.
 5. **Skill-vs-script shape** — whether a skill is built as an end-to-end deterministic orchestrator when it should be a thin context block over a bundled script.
-6. **Invocation mode** — whether a skill that can't usefully auto-fire (slash-command-only, or a sealed-input sub-routine) is needlessly shaped for it, paying description budget + router noise for discovery it never uses.
+6. **Invocation mode** — whether a skill that can't usefully auto-fire (slash-command-only, or a sealed-input sub-routine) is needlessly shaped for it, paying description budget + router noise for discovery it never uses — and the inverse: whether `disable-model-invocation: true` is set on a skill that native scheduled tasks must fire, silently breaking the schedule.
 
 ## When This Applies
 
 Severity tiers in scope: **Major**, **Minor**.
 
-- **Major** — skill in a clearly-wrong location (the wrong-placement predicate), unambiguous duplicate skill should be merged, a description that carries _no routing signal at all_ (pure feature inventory with nothing a router can match on), a skill shaped as an end-to-end deterministic orchestrator (the orchestration-shaped-skill predicate, Major by default), or a widely-shared skill that can't usefully auto-fire shipping a full multi-trigger auto-fire description (the invocation-mode-mismatch escalation).
+- **Major** — skill in a clearly-wrong location (the wrong-placement predicate), unambiguous duplicate skill should be merged, a description that carries _no routing signal at all_ (pure feature inventory with nothing a router can match on), a skill shaped as an end-to-end deterministic orchestrator (the orchestration-shaped-skill predicate, Major by default), a widely-shared skill that can't usefully auto-fire shipping a full multi-trigger auto-fire description (the invocation-mode-mismatch escalation), or `disable-model-invocation: true` set on a skill fired by native scheduled tasks (the disabled-invocation-breaks-schedule predicate — silently broken automation).
 - **Minor** — similar-skill differentiation suggestions, hook-integration opportunities, convention drift (frontmatter field violations), a description that leads with a feature list but still contains some trigger signal, a single extractable chain in an otherwise context-rich skill (prefer Cost's `scriptable-bash-chain` for that case), or a skill that can't usefully auto-fire still shipping a multi-trigger auto-fire description (the invocation-mode-mismatch default).
 
 ## Determinism
 
-Convention findings are mostly judgment-bound. Placement requires deciding whether referenced tools/datasets/workflows are broadly applicable; similar-skill detection surfaces candidates by reading, but the merge/differentiate/leave-alone verdict is judgment; the description-as-routing-signal finding is judgment (distinguishing a feature inventory from a purpose statement); the repo-convention frontmatter-field check is the lone deterministic finding in this category (a field-value comparison against a documented rule).
+Convention findings are mostly judgment-bound. Placement requires deciding whether referenced tools/datasets/workflows are broadly applicable; similar-skill detection surfaces candidates by reading, but the merge/differentiate/leave-alone verdict is judgment; the description-as-routing-signal and description-encodes-process findings are judgment (distinguishing a feature inventory or a workflow recipe from a purpose statement); the repo-convention frontmatter-field check is the lone deterministic finding in this category (a field-value comparison against a documented rule).
 
 ---
 
@@ -187,6 +187,8 @@ For each surfaced candidate, suggest **one** of these three — don't hedge.
 
 ## Hook Integration
 
+**Scope boundary.** This section is only about whether a *hookless* skill should GAIN a hook to fire more reliably. Reviewing whether a hook a skill *already has* is justified and well-built belongs to the **Hooks** category — see [`hooks.md`](./hooks.md); don't file existing-hook findings here. If the recommendation here would be a context-injection hook, apply hooks.md's decision test first.
+
 Not all skills need hooks. Only suggest a hook when there is a **concrete, deterministic trigger event** — a specific file being written, a specific command being run, or a specific tool being invoked. "No hook needed" is a valid and common verdict for intent-based skills.
 
 ### Finding Types
@@ -260,13 +262,37 @@ This is the **semantic** half of description quality. The mechanical description
 
 **Pattern.** The description's opening leads with a feature/implementation inventory rather than an action-led purpose statement. The canonical fix shape is a single sentence naming the job and the trigger: _"Triage a Continuous Improvement submission — check duplicates, score feasibility, route ownership, and draft a GitHub issue."_
 
+**What a good description looks like.** Under 100 characters, and as short as it can be while still saying when to use the skill. Every session reads it whether or not the skill fires, so each extra word is paid for everywhere. It trusts the skill name and body for everything else. Three shapes fail this bar:
+
+| Anti-pattern | Example | Why it fails |
+|---|---|---|
+| **Body-summary** | "Covers full-text search, fuzzy matching, and date filtering." | Restates the body as a feature list; the body lists features, the description names purpose. |
+| **Trigger-spray** | `"foo", "bar", "baz", "quux"` | Comma-separated synonym dump; the router matches semantically, not on quoted strings. Pick the canonical phrasing. |
+| **Preamble** | "This skill should be used when…" | Wastes the opening; the no-preamble convention rejects it. Lead with the action. |
+
+A 391-character description can pass every length cap and still be wrong: "Search and retrieve meeting transcripts. Supports full-text search across the transcript archive, fuzzy matching on speaker names, date-range filtering… Triggers: 'find transcript', 'search transcripts', 'transcript lookup'…" is a body-summary followed by a trigger-spray. The same skill routes on "Find meeting transcripts by content, speaker, or date for engineers reconstructing a discussion they didn't attend." The features belong in the body; the description's only job is to get the skill loaded in the right situations.
+
 **Severity.** Minor by default (a feature-list opener that still contains some matchable trigger signal). **Major** only when the description carries no routing signal at all — pure feature inventory a router can't act on. Do not escalate on taste; if a reasonable trigger phrase is present, it's Minor.
 
-**Deterministic.** No — distinguishing "feature inventory" from "purpose statement" is judgment. Follow the project's skill-description style guidance (and Anthropic's public guidance on writing skill descriptions); cite it in the fix.
+**Deterministic.** No — distinguishing "feature inventory" from "purpose statement" is judgment. Cite the description rules above in the fix.
 
 **Fix.** Rewrite the first sentence as an action-led purpose + trigger. This is the one description finding that gets a suggested rewrite (see Rewrite Policy below) — the corrected `description:` line.
 
 **Boundary.** If the only problem is mechanical description shape (length, preamble, keyword spray), there is NO Convention finding — those are out of this skill's scope. This finding requires a _semantic_ defect: does the first sentence route, or summarise the body?
+
+### Description encodes process (`finding_type`: `description-encodes-process`)
+
+**Pattern.** The description does not merely summarise features — it inlines the skill's *workflow steps* ("First reads the config, then validates each entry, then opens a PR and posts to the feed"). The failure mode is distinct from `description-as-routing-signal`: the skill *does* fire, but Claude executes from the abbreviated recipe in the description and never reads the full SKILL.md body, so every guardrail, footgun, and project-specific detail that lives below the frontmatter is silently skipped. A description that teaches the process competes with the body for authority and usually wins, because it is already in context before the skill loads.
+
+**Why it matters.** The description is loaded into every session; the body is loaded only when the skill triggers. A process-shaped description hands Claude a lossy copy of the procedure up front, so it acts on the copy. The more steps the description spells out, the more of the body Claude skips — and the body is where the actual teeth are.
+
+**Severity.** Minor by default. **Major** when skipping the body would drop a real guardrail or project-specific constraint — e.g. a skill whose body carries a destructive-action gate, an auth step, or a non-obvious ordering requirement that the process-shaped description omits. In that case the mis-read has a correctness or safety consequence, not just a stylistic one.
+
+**Deterministic.** No — judging that a description encodes *process* (vs a legitimate purpose + trigger) is judgment. Cite the description rules above in the fix.
+
+**Fix.** Strip the steps from the description and leave an action-led purpose + trigger; the workflow belongs in the body, where it loads in full. Gets a suggested rewrite (the corrected `description:` line) — see Rewrite Policy.
+
+**Boundary with `description-as-routing-signal`.** Routing-signal fixes a description that *summarises the body's features* so the router can't match; this fixes a description that *spells out the workflow* so Claude under-reads the body. A description can do both — lead with the worse consequence and file the one whose fix subsumes the other (both fixes converge on "action-led purpose + trigger, no body content in the frontmatter"); do not file two findings for one description.
 
 ## Invocation Mode (the invocation-mode-mismatch predicate)
 
@@ -287,7 +313,7 @@ There are **two** correct end states, depending on how the skill is reached:
 - **Slash-command skill** (the user runs `/<skill>`): `disable-model-invocation: true` plus one action-led purpose line that names the invocation — e.g. "Stress-test a Linear issue's plan against the codebase; runs only when the user invokes /grill-me." Lead with the verb: a description starting "Use when…" fails the no-preamble convention many description linters (and Anthropic's guidance) enforce.
 - **Helper-only skill** (dispatched by another skill / orchestrator, never user-run): `disable-model-invocation: true` plus a one-line description of _what it does and who dispatches it_ — e.g. "Dispatched by the triage orchestrator to verify hypotheses against live code and return a TriageResult." Do NOT rewrite a helper-only "called by / dispatched by" description into user-invocation text; that misstates how the skill runs. (Note: a `user-invocable: false` skill is _not_ user-invoked-only — that field blocks the user from invoking it, leaving it model- or dispatch-reached. The field that turns auto-fire off is `disable-model-invocation: true`.)
 
-**Fix.** Collapse the multi-trigger `description:` to a one-line purpose statement matching how the skill is reached — an action-led purpose line naming the slash invocation for command skills, or a _what-it-does + who-dispatches_ line for sub-routines — and set `disable-model-invocation: true` so the router can't fire a skill that can't use the invocation. Never convert a sub-routine's "called by / dispatched by" description into user-invocation text, and never lead a rewritten description with "Use when…" — the no-preamble convention rejects that, so lead with the action verb. Cite the project's skill-description style guidance.
+**Fix.** Collapse the multi-trigger `description:` to a one-line purpose statement matching how the skill is reached — an action-led purpose line naming the slash invocation for command skills, or a _what-it-does + who-dispatches_ line for sub-routines — and set `disable-model-invocation: true` so the router can't fire a skill that can't use the invocation. **Before recommending the field, check the skill isn't fired by Claude Code's native scheduled tasks** — `disable-model-invocation: true` also blocks a scheduled task from running the skill as its prompt (see the disabled-invocation-breaks-schedule finding below); for such a skill, recommend only the description collapse, not the field. Never convert a sub-routine's "called by / dispatched by" description into user-invocation text, and never lead a rewritten description with "Use when…" — the no-preamble convention rejects that, so lead with the action verb. Cite the description rules in § Description as a Routing Signal.
 
 **Severity.** Minor by default. **Escalate to Major when** the skill is widely shared AND the `description:` is a full multi-trigger auto-fire surface — there the wasted description loads into thousands of sessions and the router noise competes against skills that _do_ need to fire. Cite the predicate; silent escalation is not allowed.
 
@@ -296,6 +322,28 @@ There are **two** correct end states, depending on how the skill is reached:
 **How to spot it.** (1) Decide whether auto-fire could do useful work for the skill: a slash-command-only skill or a sealed-input sub-routine cannot, while an intent-driven context/domain skill can — never infer "can't auto-fire" from `argument-hint`, `user-invocable: false`, or "dispatched by X" alone. (2) If it can't usefully auto-fire, check the `description:`: a multi-trigger auto-fire surface is the defect. A clean one-line description is the acceptable boundary even if `disable-model-invocation` is unset — don't fire on the missing field alone. (3) Fire only when the skill is in scope AND ships a multi-trigger auto-fire description. A model-invoked skill whose rich trigger description does real routing work is correct and normal — not this finding.
 
 **Boundary with `description-as-routing-signal`.** That finding fixes a _model-invoked_ skill whose description fails to route (sharpen the triggers so it fires). This finding _drops a wasted auto-fire surface_ from a skill that can't usefully auto-fire (collapse the multi-trigger description; set the field for sealed-input sub-routines). They point in opposite directions — never file both on the same skill. Mechanical description-shape (length, preamble, keyword spray) stays out of scope; this is the semantic call of whether the invocation _mode_ fits the skill's purpose.
+
+## Scheduled-Task Skill With Model Invocation Disabled (the disabled-invocation-breaks-schedule predicate)
+
+**`finding_type`: `disabled-invocation-breaks-schedule`.**
+
+### Finding type
+
+| Finding type | Severity | Det? |
+|---|---|---|
+| Skill fired by Claude Code's native scheduled tasks sets `disable-model-invocation: true`, silently breaking the schedule | **Major** | N |
+
+**Pattern.** The skill's frontmatter sets `disable-model-invocation: true` AND the skill is fired by Claude Code's **native scheduled tasks** — a scheduled task whose prompt invokes the skill, including a skill whose own workflow creates such a task (e.g. a `--refresh` mode that schedules its next run). `disable-model-invocation: true` blocks more than router auto-fire: it also prevents a native scheduled task from running the skill as its prompt. The schedule then silently stops producing runs — no error, no failing check, just absent output. Example shape: a monitor skill whose runs are overwhelmingly scheduled-task invocations; setting the field there would kill the monitor.
+
+**What is NOT in scope.** External schedulers that shell out to `claude -p "/<skill> ..."` — launchd, host cron, CI jobs. A typed slash command is *user* invocation, which `disable-model-invocation: true` permits, so those schedules keep working with the field set. Only the native scheduled-task path (skill fired as the task's prompt) breaks. Establish which scheduler is in play from the skill body or its docs before firing.
+
+**Severity.** Major — silently broken automation is worse than router noise: the failure produces no signal, and the skill's whole job (a monitor, a recurring report) stops happening.
+
+**Deterministic.** No — the frontmatter field read is mechanical, but establishing "this skill is driven by native scheduled tasks" requires reading the body/docs and judging how the skill is actually fired.
+
+**Fix.** Remove `disable-model-invocation: true` and rely on a tight one-line description to limit router noise, or migrate the schedule to an external `claude -p "/<skill>"` runner and keep the field. Never leave both in place.
+
+**Boundary with `invocation-mode-mismatch`.** That finding pushes a slash-only skill *toward* `disable-model-invocation: true`; this one blocks the field where a native schedule depends on model-side invocation. They are mutually exclusive on a given skill — a scheduled-task-driven skill is not "slash-command-only" even if humans also run it by slash, so it is never an invocation-mode-mismatch candidate for the field (its description can still be collapsed if it's a multi-trigger surface).
 
 ## Repo-Convention Findings
 
@@ -321,13 +369,13 @@ There are **two** correct end states, depending on how the skill is reached:
 - **Cost-efficiency patterns are NOT in this category.** Bash chains, MCP result-size nudges, field projection, and response-style discipline live in [`cost.md`](./cost.md). A skill in the wrong location AND with expensive bash chains gets two findings, one per category.
 - **`orchestration-shaped-skill` deliberately co-fires with Cost.** It is the one intentional cross-category pair: the same deterministic-orchestration smell is filed in Cost (`script-extractable-orchestration`) AND Convention (`orchestration-shaped-skill`) when a skill is mostly glue end-to-end. This is by design. A single extractable chain in an otherwise-sound skill is Cost only.
 - **Body shape findings are NOT in this category.** Body↔references duplication and flat-reference-list problems live in [`structural.md`](./structural.md).
-- **Model invocation is the correct default — do NOT fire `invocation-mode-mismatch` on most skills.** Auto-fire is how the great majority of skills are meant to work. Fire only when auto-fire can't do useful work for the skill (slash-command-only, or a sealed-input sub-routine) AND it still ships a multi-trigger auto-fire description that courts the router. Never fire from `argument-hint` / `$ARGUMENTS`, `user-invocable: false`, or "dispatched by X" / "never invoked directly" on their own. A clean one-line description is the acceptable boundary — do not fire on a missing `disable-model-invocation: true` alone. And never fire merely because a description is long — mechanical description shape is out of scope.
+- **Model invocation is the correct default — do NOT fire `invocation-mode-mismatch` on most skills.** Auto-fire is how the great majority of skills are meant to work. Fire only when auto-fire can't do useful work for the skill (slash-command-only, or a sealed-input sub-routine) AND it still ships a multi-trigger auto-fire description that courts the router. Never fire from `argument-hint` / `$ARGUMENTS`, `user-invocable: false`, or "dispatched by X" / "never invoked directly" on their own — a dispatched or non-user-invocable skill can still be a legitimate auto-fire skill (e.g. a context skill acting on free-form intent). A clean one-line description is the acceptable boundary — do not fire on a missing `disable-model-invocation: true` alone (setting the field is good hygiene, e.g. for a sealed-input sub-routine consuming a structured hand-off object, but its absence with an otherwise-clean description is not a finding). And never fire merely because a description is long — mechanical description shape is out of scope.
 - **Content-quality findings are NOT in this category.** Procedure smell and context-vs-instructions live in [`content-quality.md`](./content-quality.md). Hook integration is here because triggering is a placement/fit concern, but procedure smell is still about _what's in the body_.
 - **Only flag a repo-convention violation against a documented convention.** If the repo doesn't document the rule, there's no finding — don't impose a convention from another project.
 
 ## Rewrite Policy
 
-**Produce a suggested rewrite for three findings: the similar-skill "differentiate" verdict, the `description-as-routing-signal` finding, and `invocation-mode-mismatch`.** For "differentiate", write the sharpened `description:` text that explicitly redirects the user to the neighbor skill. For `description-as-routing-signal`, write the corrected first sentence as an action-led purpose + trigger per the project's skill-description style guidance. For `invocation-mode-mismatch`, the rewrite is the corrected frontmatter — `disable-model-invocation: true` plus the collapsed one-line `description:` as an action-led purpose statement (naming the slash invocation for command skills, or a what-it-does + who-dispatches line for sub-routines; never user-invocation text for a sub-routine, and never a "Use when…" preamble). In all three the rewrite is frontmatter, not the whole skill (see [`suggested-rewrites.md`](./suggested-rewrites.md) for the rewrite-block format).
+**Produce a suggested rewrite for four findings: the similar-skill "differentiate" verdict, the `description-as-routing-signal` finding, the `description-encodes-process` finding, and `invocation-mode-mismatch`.** For `description-encodes-process`, the rewrite is the corrected `description:` line with the workflow steps removed, left as an action-led purpose + trigger per the description rules in § Description as a Routing Signal. For "differentiate", write the sharpened `description:` text that explicitly redirects the user to the neighbor skill. For `description-as-routing-signal`, write the corrected first sentence as an action-led purpose + trigger per the same rules. For `invocation-mode-mismatch`, the rewrite is the corrected frontmatter — `disable-model-invocation: true` plus the collapsed one-line `description:` as an action-led purpose statement (naming the slash invocation for command skills, or a what-it-does + who-dispatches line for sub-routines; never user-invocation text for a sub-routine, and never a "Use when…" preamble). In all four the rewrite is frontmatter, not the whole skill (see [`suggested-rewrites.md`](./suggested-rewrites.md) for the rewrite-block format).
 
 **For everything else in this category, describe the fix in prose.** `orchestration-shaped-skill` — describe the extraction: name which sections are the deterministic pipeline (to move into `scripts/`) and which are the judgment kernel (to keep in the thin skill); do not author the script yourself. Placement findings — explain why the current location is wrong and which location (or `~/.claude/` / `.claude/rules/`) is right; do not relocate the skill yourself. Merge / leave-alone verdicts for similar skills get prose only. Hook-integration findings — describe the trigger opportunity ("Add a PreToolUse Bash hook matching `gh pr create`…"); the author writes the hook script themselves. Repo-convention findings get a one-line "change to the documented value" — no rewrite block.
 

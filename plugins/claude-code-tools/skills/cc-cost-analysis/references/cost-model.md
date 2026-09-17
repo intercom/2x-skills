@@ -34,6 +34,10 @@ output_share      = weighted_output      / total_weighted
 
 Apply these shares to the actual total cost to get dollar amounts per token type.
 
+**Compute per model, then combine — never pool raw tokens across models first.** Each model's ratios are relative to *its own* input price, so a raw cache-read token from a small/fast model is not worth the same as one from the top-tier model. Weight each model's totals by that model's own per-token prices before summing across models; a pooled sum silently erases the price difference between models.
+
+**Treat self-reported cost fields as an estimate, not billed truth.** A `cost_usd`-style field emitted by the client is typically computed from a price table baked into that client version — it can drift from your actual invoice after a price change, a negotiated rate, or a stale client. Use it for relative comparisons (which model/user/session costs more) and reconcile periodically against your actual billing statement before quoting an absolute dollar figure.
+
 ### Illustrative share breakdown
 
 From one large deployment — verify against your own data:
@@ -85,6 +89,8 @@ context_cost = (result_bytes / 4) × ($cache_write_price + remaining_turns × $c
 ```
 
 (The `/ 4` approximates ~4 bytes per token for markdown/text.)
+
+**Cache-TTL caveat:** these formulas assume the context stays warm across consecutive turns. Prompt caches have a minimum TTL (commonly on the order of a few minutes, with longer-lived tiers available at a higher write price), and eviction past that minimum isn't guaranteed. After a long idle gap — a long sleep in a wait/poll loop, or a slow human response — the next request **may** miss cache and re-pay a full write instead of a cheap read. This matters most for exactly the wait/poll turns a waste analysis investigates: check the event's actual cache-write token count when a gap is involved rather than assuming the read-only formula still applies; treat the read-only formula as a lower bound for gapped turns, not a blanket rule.
 
 ## Key Ratios for Quick Estimates
 

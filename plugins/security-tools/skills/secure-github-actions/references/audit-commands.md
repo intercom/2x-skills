@@ -5,12 +5,29 @@ Load this reference when auditing an existing set of workflows for violations of
 Scan existing workflows for violations:
 
 ```bash
-# Any ${{ }} in run: blocks (all expressions, not just attacker-controlled)
-grep -rn 'run:' .github/workflows/*.yml | xargs -I{} grep -n '\${{' {} 2>/dev/null
-# More precise: find run: blocks and check for ${{ inside them
-for f in .github/workflows/*.yml; do
-  awk '/^[[:space:]]*run:[[:space:]]*\|/{flag=1;next} flag && /^[[:space:]]*[a-z]/{flag=0} flag && /\$\{\{/{print FILENAME":"NR": "$0}' "$f"
-done
+# Any ${{ }} inside a run: step value. Parses the YAML rather than pattern-matching
+# lines, so every scalar form (inline, block |/>, plain multi-line, list items) is
+# covered and non-step keys — e.g. a job coincidentally named "run" — are ignored.
+# Runs under uv, which fetches PyYAML on the fly; the mikefarah yq equivalent is
+#   yq '.jobs[].steps[] | select(.run) | select(.run | test("\{\{")) | .run' FILE
+uv run --with pyyaml python - <<'PY'
+import glob, yaml
+for f in sorted(glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")):
+    try:
+        data = yaml.safe_load(open(f))
+    except yaml.YAMLError as e:
+        print(f"{f}: YAML parse error: {e}"); continue
+    if not isinstance(data, dict):
+        continue
+    for job_id, job in (data.get("jobs") or {}).items():
+        if not isinstance(job, dict):
+            continue
+        for i, step in enumerate(job.get("steps") or []):
+            run = step.get("run") if isinstance(step, dict) else None
+            if isinstance(run, str) and "${{" in run:
+                label = step.get("name") or f"step {i}"
+                print(f"{f}: job '{job_id}' > {label}: " + "run uses a ${{ }} expression")
+PY
 
 # secrets: inherit
 grep -rn 'secrets: inherit' .github/workflows/

@@ -294,6 +294,8 @@ Quantifies how much of the bill comes from long-running sessions.
 
 ## Section 5: Compaction Analysis
 
+Compaction cost is not directly measurable from these events: `api_request` events carry no compaction flag, and `hook.PreCompact` events typically don't carry a context-size field either, so the context size at the moment of compaction can't be read off either event type directly. Estimate it instead from a call signature — large `output_tokens`, small cache-write tokens, large cache-read tokens is the shape of a just-compacted turn — and treat the result as an estimate, not a measurement.
+
 ### 5a. Compaction events by trigger type
 
 ```json

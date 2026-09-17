@@ -2,7 +2,9 @@
 
 ## Scope
 
-No credential exposure in skill instructions. No instructions to paste secrets into the conversation. No instructions that route secrets through the model or to disk in plaintext. No unsafe shell idioms in executable scripts.
+No credential exposure in skill instructions. No instructions to paste secrets into the conversation. No instructions that route secrets through the model or to disk in plaintext. No hardcoded secret literals in bundled scripts. No unsafe shell idioms in executable scripts.
+
+"Bundled scripts" here spans both the skill's own `scripts/` **and** the scripts a hook associated with the skill invokes from its plugin `hooks/` — the executable-script and credential checks below apply to hook scripts too. (This is the Security side of the boundary [`hooks.md`](./hooks.md) draws: a secret in hook source is a Security finding, not a Hooks one.)
 
 Security findings always escalate to **Critical** or **Major** — there is no "polish" tier. Credential-paste isn't style; shell injection isn't a nit.
 
@@ -10,8 +12,8 @@ Security findings always escalate to **Critical** or **Major** — there is no "
 
 Severity tiers in scope: **Critical**, **Major**.
 
-- **Critical** — credential exposure in instructions, plaintext credential storage, an auth flow that surfaces secrets to the model as text.
-- **Major** — security bug in an executable script under `scripts/` (command injection, unquoted expansion, credential leak, path traversal, disabled transport security).
+- **Critical** — credential exposure in instructions, plaintext credential storage, a hardcoded secret literal in a bundled script, an auth flow that surfaces secrets to the model as text.
+- **Major** — security bug in an executable script under `scripts/` or a plugin `hooks/` script (command injection, unquoted expansion, credential leak, path traversal, disabled transport security).
 - **Minor** — not in scope. Security findings are not polish.
 
 ## Credential Exposure Patterns (Critical)
@@ -51,6 +53,18 @@ This also fires on the narrower trigger **even without an explicit echo-and-past
 **Deterministic.** No — recognising that a described flow ends with the model reading a secret requires semantic understanding, not a single regex.
 
 **Fix.** Use the tool's non-interactive / machine auth mode (the one designed for automated agents) that injects credentials into the environment directly, and drop any "echo the token and paste it" step. If no such mode exists, the skill should hand the privileged action to the user rather than capturing their secret.
+
+### Hardcoded secret literal in a bundled script
+
+**Pattern.** A bundled script — under the skill's `scripts/` **or** a plugin `hooks/` script it invokes — contains a live credential in its source: `Authorization: Bearer sk_live_…`, an API key, a fallback token, a DB password. Detectable by reading the script: a secret-shaped literal (`sk_live_`, `Bearer <token>`, `AKIA…`, `xoxb-…`) handed to `curl`, an SDK, or an `export`. This is a common way a hook script exposes a credential — an `async: true` telemetry `PostToolUse` hook that `curl`s an endpoint with an inlined bearer token.
+
+**Severity.** Critical.
+
+**Deterministic.** No — a real secret literal must be told apart from a placeholder (`sk_live_xxx`, `<your-token>`, `${OTEL_TOKEN}`) or an anti-pattern example, which requires reading the surrounding code.
+
+**Why it's bad.** A secret committed into a distributed script is worse than an interactive paste — it ships to every install and lives in git history, so scrubbing the file does not undo the exposure; rotation is the only remedy once merged.
+
+**Fix.** Read the secret from the environment or a secret manager at run time (`"Authorization: Bearer ${OTEL_TOKEN:?}"`), never inline it — and rotate any literal that was ever committed. Produce the corrected snippet as a rewrite.
 
 ## Correct Patterns to Recognise as Safe
 
@@ -110,12 +124,12 @@ All sub-patterns below are **not deterministic** — flagging command injection,
 
 - **Anti-pattern examples in skill bodies are not credential exposure.** A skill that contains the strings `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` as **descriptions of what NOT to do** is teaching, not instructing. Detection must use context: is the string in an instruction telling the user to do something, or in a "do not" warning? If the surrounding text frames it as wrong, it's not a finding.
 - **Plain mention of "paste" is not a finding.** Skills often say "paste the URL" or "paste the build ID" — only flag when "paste" is associated with credential strings.
-- **`scripts/` security review requires reading the actual scripts.** Don't speculate about script content from SKILL.md alone. If the skill folder has executable scripts and they're security-relevant, read them.
+- **Bundled-script security review requires reading the actual scripts.** Don't speculate about script content from SKILL.md alone. If the skill folder has executable scripts under `scripts/`, or an associated hook invokes a plugin `hooks/` script, and they're security-relevant, read them.
 - **A documented localhost / dev-only TLS-disable is not the transport-security finding.** A `verify=False` scoped to `https://localhost` or a self-signed dev cert, clearly framed as dev-only, is not a production MITM exposure — and an anti-pattern example (this file names the disabling flags as things NOT to do) is teaching, not a finding. Flag transport-security-disabled only when a real remote/production call has verification suppressed.
 
 ## Rewrite Policy
 
-**Produce a suggested rewrite for executable-script bugs (the Major-tier finding type).** Show the fixed code inline — quoted expansions, masked credential output, `realpath` validation, re-enabled TLS verification (or an explicit private-CA bundle), etc. The rewrite lives inside the finding it addresses (collapsible details block per [`suggested-rewrites.md`](./suggested-rewrites.md)).
+**Produce a suggested rewrite for executable-script bugs (the Major-tier finding types) and for a hardcoded secret literal in a bundled script (Critical).** Show the fixed code inline — quoted expansions, masked credential output, `realpath` validation, re-enabled TLS verification (or an explicit private-CA bundle), an env-read `"Bearer ${TOKEN:?}"` in place of an inlined secret, etc. The rewrite lives inside the finding it addresses (collapsible details block per [`suggested-rewrites.md`](./suggested-rewrites.md)).
 
 **For credential-exposure Critical findings, describe the fix in prose.** Name the secure replacement explicitly — a non-interactive auth flow that injects credentials into the command environment (so they live only in the process/subshell, never in the conversation transcript or on disk) — and explain why. Do not generate a full rewrite of the surrounding skill section; the author needs to choose where the auth invocation belongs.
 

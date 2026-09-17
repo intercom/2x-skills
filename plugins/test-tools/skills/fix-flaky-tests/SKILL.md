@@ -15,13 +15,13 @@ situation rather than following rigid steps.
 <HARD-RULES>
 - NEVER skip a test (xit, skip, pending, `t.Skip`, `.skip`, etc.) as a fix
 - NEVER fabricate a root cause — if you can't identify it, say so
-- NEVER propose a fix without the actual CI error message (exception + backtrace from the CI logs, or pasted verbatim by the user)
-- NEVER proceed with code-only analysis if the CI error cannot be established. Stop and ask the user for it. There is no "reduced confidence" mode.
+- NEVER propose a diagnosis-driven fix without the actual CI error message (exception + backtrace — fetched from the CI logs OR already pasted in the prompt / by the user). The cheap fast exits are the sole exception: already-fixed, bot-skip revert, and broken-not-flaky resolve an issue from git/PR history without a CI error and may open a PR. This rule governs the real investigation that follows a failed fast-exit.
+- NEVER proceed with a real investigation if the CI error is not in hand. **"In hand"** = the exception + backtrace is present in the prompt OR was retrieved by a tool. A broken log fetch does NOT mean "no error" when the caller already supplied it in the prompt — check the prompt first, and if the error is there, proceed normally (a headless run with its CI access down but the error pasted is a valid investigation). Only when the error is genuinely absent AND cannot be fetched: **interactive caller** (a user can answer) — stop and ask for it; **headless caller** — no interactive user to answer (an automated or scheduled invocation with nobody to ask; if unsure, assume headless) — ABORT and return the **CI-Logs-Unavailable Abort** (see HARD GATE below). Never downgrade to a guess or a "best-effort" hypothesis; there is no "reduced confidence" mode.
+- NEVER run a test locally, for any reason — not `bundle exec rspec`, `script/test`, `jest`, `pytest`, `go test`, or any equivalent. Not to reproduce, not to confirm a mechanism, not to verify a fix. This holds for every flake category, including seed-reproducible state-poisoning/ordering, and having a local test environment available changes nothing. Diagnose from the CI error and source reading. Whether a replay can be staged on CI at all is a property of the pipeline, not a universal — some let you pin a seed or re-run a named shard; others re-shard on every build so there is nowhere to replay one. Read the discovered provider and profile files before concluding either way, and work from whatever evidence they name. The ban above is on running the test *here*; it says nothing about what CI can be asked to do.
 - NEVER assume infrastructure flakiness without build-wide evidence
 - Only fix if you can identify the root cause with HIGH confidence
 - NEVER claim a fix is complete until CI is green — a "fix" that fails CI is not a fix. Monitor the PR build, investigate failures, and iterate until it passes.
-- Verification of a proposed fix must come from a green CI build, never from local runs. Local runs cannot replicate CI's parallelism, shared caches, or cross-test ordering, so a local pass means almost nothing.
-- Local reproduction during **investigation** (observing state while the bug happens, confirming the mechanism) is a different activity — allowed and encouraged when the test environment is available. When no environment is available (headless), the investigation is limited to CI logs + code reading.
+- Verification of a proposed fix must come from a green CI build, never from local runs. Local runs cannot replicate CI's real backing services, test-isolation model, or cross-test ordering, so a local pass means almost nothing.
 </HARD-RULES>
 
 ## Required Input
@@ -126,15 +126,55 @@ the actual CI error message is essential. Code-only analysis produces plausible 
 hypotheses — in one real case, code analysis concluded "case not created (timeout)" when
 the actual error was "wrong case found (suffix collision)."
 
+**First check whether the CI error is already in hand.** If the failing job's exception +
+backtrace was pasted into the prompt (or supplied earlier by the user), the gate is already
+satisfied — proceed with the investigation even if you cannot fetch logs yourself. A headless
+run whose CI access is down but whose prompt contains the error is a valid investigation, not
+an abort. Only when the error is NOT already present do you try to fetch it.
+
 Fetch the failing job's logs using the CI provider file for the detected provider (e.g.
 `references/ci/buildkite.md`). Extract: exception class + message + backtrace, total
 failed-test count, and which unique files are affected.
 
-**If logs are unavailable** — MCP not connected, API down, logs expired, retrieval returns
-nothing useful — ask the user to paste the error verbatim. A user-pasted error is
-equivalent to a tool-fetched one for this gate. Stop and wait rather than guessing.
+**If the CI error is not in the prompt and cannot be fetched** — MCP not connected, API down,
+logs expired, retrieval returns nothing useful — what you do next depends on whether there is
+a user to ask:
+
+- **Interactive caller:** ask the user to paste the error verbatim. A user-pasted error is
+  equivalent to a tool-fetched one for this gate. Stop and wait rather than guessing.
+- **Headless caller (no interactive user to answer — an automated or scheduled invocation
+  with nobody to ask; if unsure, assume headless):** the CI error is genuinely absent, so it
+  is **100% unsafe to proceed** — ABORT with the message below. This holds for every
+  detected provider (Buildkite, CircleCI, GitHub Actions) — the missing signal is the CI
+  error, not any one tool. Do NOT substitute local reproduction, code reading, or a
+  speculative write-up for the missing CI error, and do NOT open a PR or post a diagnosis
+  comment. A confident-but-unfounded diagnosis is worse than none: it ships an inert "fix",
+  closes the issue, and sends the next engineer down a false trail. (A local run is never the
+  way out of this: it cannot discover a root cause when the error is absent, and cannot
+  confirm one either. See HARD-RULES.)
+
 **Code-only analysis is never an acceptable substitute.** Do not retry failing log calls
 more than twice in a session.
+
+### CI-Logs-Unavailable Abort (headless)
+
+When headless and the CI error cannot be established, stop all work and return the message
+below to the caller — unmissable and unsoftened, it is the entire deliverable. Produce
+nothing else, and in particular no PR and no issue comment. Keep the wording verbatim in
+substance, but name the **detected CI provider** and its feature in place of the Buildkite
+placeholders (the same abort applies to CircleCI and GitHub Actions runs):
+
+> **ABORTED — cannot safely investigate this flaky test.** The failing job's CI logs could
+> not be retrieved (the log source for the detected provider — e.g. the Buildkite / CircleCI /
+> GitHub Actions API or tooling — was unavailable or not connected), and there is no user to
+> paste the error. Diagnosing a flaky test without its actual CI error produces confident but
+> wrong root causes, so I did not proceed. **No diagnosis, no PR, and no issue comment were
+> produced.** To re-run: grant this invocation CI log access for the detected provider, or
+> paste the failing job's exception + backtrace, then re-invoke.
+
+Do not soften this into a partial finding, a "here's my best guess" hypothesis, or a
+"blocked, but I reproduced something locally" report. The correct output of a blind
+investigation is the abort message and nothing more.
 
 ## Classify the Failure
 
@@ -151,19 +191,30 @@ issue, no code fix. The app profile defines the exact threshold and common infra
 **Quick heuristics:** passes on retry in the same build → test-side (state/ordering/timing);
 all tests in a file fail every run → broken by a code change, not flaky.
 
+## Response Style
+
+Skip narration and step commentary ("Now I'll fetch the logs…", "Let me classify this…").
+Speak when you have a finding, a question, or a decision point. Emit the
+CI-Logs-Unavailable Abort verbatim, with no preamble.
+
 ## Investigate Root Cause
 
+Diagnose from the CI error + source reading first — that is what identifies the root cause.
 Reproduction vs verification are different activities. **Reproduction** runs the test to
-observe state while the bug happens — a way to close a confidence gap during investigation.
-**Verification** ("has my fix worked?") always belongs on CI (see below).
+observe state while the bug happens. **Verification** ("has my fix worked?") always belongs
+on CI (see below) — never run the test locally to check a fix.
 
-Most CI flakes do NOT reproduce locally. Limit to 2 local attempts per hypothesis; if it
-passes twice, the flake is CI-only and further local runs add no signal. The framework file
-gives the replay command; **`references/ci-only-flakes.md`** explains which categories
-reproduce locally vs not, browser/driver noise, and measurement-driven verification.
+**There is no reproduction step you run yourself.** Diagnose ordering / state-poisoning
+flakes from the failing run's CI evidence — **`references/ci-only-flakes.md`** has the
+method. If code reading cannot close the mechanism, that is the STOP case below — not a cue
+to measure a guess.
+
+**Headless / automated invocation:** a misconfigured local test harness is not your problem —
+you never invoke it. Diagnose from the CI error + code reading and let the PR build verify.
 
 For **state poisoning** (common), the poisoner is usually a sibling test that mutates global
-state and doesn't restore it; confirm by running it before the victim at the same seed. For
+state and doesn't restore it; find it by reading the failing shard's test list in the CI log
+and checking which of those co-resident tests mutates the state the victim depends on. For
 **timing**, look for wall-clock assertions without a frozen clock and too-short async waits.
 For **resource issues**, prefer the infra fast-exit over a test-side fix.
 
@@ -224,9 +275,9 @@ a PR to this skill's repo.
 
 - **`references/discovery.md`** — detect framework / CI / app, and what to load
 - **`references/classification-generic.md`** — framework-agnostic flake categories
-- **`references/frameworks/rspec.md`** — RSpec idioms, repro commands (fully fleshed); `_template.md` for new frameworks
+- **`references/frameworks/rspec.md`** — RSpec idioms, what CI evidence RSpec can yield (fully fleshed); `_template.md` for new frameworks
 - **`references/ci/buildkite.md`** — Buildkite log-fetch (fully fleshed); `_template.md` for new providers
-- **`references/ci-only-flakes.md`** — CI-only reproduction, noise filtering, measurement-driven verification
+- **`references/ci-only-flakes.md`** — why these flakes give no local signal, noise filtering, measurement-driven verification
 - **`references/handling-unrelated-ci-failures.md`** — diagnosing CI failures unrelated to your fix PR
 
 App profiles (`references/profiles/<app>.md`) are an extensibility point for your own

@@ -18,15 +18,17 @@ git log --oneline -1 -- <test_file>   # who skipped it, and when
 
 A skip is never a valid fix — revert it alongside the real fix.
 
-## Reproduction commands
+## Reading the failing run
 
-The command(s) to replay a specific test with a fixed seed/order and the failing test
-list. Note whether this framework randomizes order (and the flag to pin the seed):
-- Jest: `jest --runInBand --testPathPattern=... --seed=<n>` (with `--seed` support)
-- pytest: `pytest -p no:randomly` / `pytest-randomly --randomly-seed=<n> <nodeids>`
-- Go: `go test -run TestName -count=1 ./pkg/...` (note `-count=1` disables caching)
+Local runs are never sanctioned, in this framework or any other, and a replay staged on CI
+is usually not available either — the pipeline decides which tests share a shard. Document
+what the CI log gives you to read instead: whether this framework randomizes order and
+records the seed (Jest `--seed`, `pytest-randomly --randomly-seed`, Go's per-package
+ordering), whether the log names the tests that ran in that shard and in what order, and
+whether anything in the shard's setup output identifies shared state.
 
-State the local-vs-CI reproduction caveat for this framework.
+State plainly whether this framework's ordering can be inferred from the log at all — if it
+cannot, say so, so a caller doesn't chase evidence that was never recorded.
 
 ## Framework-specific manifestations
 

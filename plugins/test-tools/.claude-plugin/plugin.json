@@ -1,6 +1,6 @@
 {
   "name": "test-tools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Investigate and fix flaky tests across frameworks and CI systems.",
   "author": {
     "name": "Fin 2x"

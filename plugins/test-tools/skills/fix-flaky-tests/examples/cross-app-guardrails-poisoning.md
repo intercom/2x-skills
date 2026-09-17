@@ -4,7 +4,7 @@
 
 **Validated**: CI log search on the failing job showed the exception + backtrace, matching a few recent default-branch builds.
 
-**Reproduced**: Failed locally with `bundle exec rspec --seed 34567 --order random spec/services/order_export_spec.rb spec/services/rate_limit_guard_spec.rb` — the poisoner-then-victim ordering at that seed reproduces the failure deterministically.
+**Co-residency evidence**: the failing shard ran at seed 34567 and its spec list — read off the CI log — put `order_export_spec.rb` in the same shard as the victim. That made it a candidate, not a proven poisoner; the log carries no per-example execution order. Reading its `around` hook is what closed the mechanism.
 
 **Classified**: Global state poisoning — seed-dependent, passes in isolation.
 

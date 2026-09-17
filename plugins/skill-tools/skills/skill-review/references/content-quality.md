@@ -13,8 +13,8 @@ This category lives entirely in AI judgment. Detection requires understanding wh
 Severity tiers in scope: **Critical** (rare), **Major** (rare), **Minor** (typical).
 
 - **Critical** — declared procedure produces wrong or dangerous output on normal inputs.
-- **Major** — procedure smell OR a weak completion criterion, WITH a citable concrete behavior it causes. Don't escalate on taste alone.
-- **Minor** — procedure smell, a weak completion criterion, or a no-op instruction, without concrete consequence; over-prescription patterns.
+- **Major** — procedure smell, a weak completion criterion, or a form-mismatch, WITH a citable concrete behavior it causes; OR a `negotiable-guardrail` on an irreversible/destructive action (Major by default — no separate consequence needed, mirroring Test Coverage's destructive-guardrail treatment). Don't escalate procedure/criterion/form findings on taste alone.
+- **Minor** — procedure smell, a weak completion criterion, a form-mismatch, or a no-op instruction, without concrete consequence; a `negotiable-guardrail` on a low-stakes action; over-prescription patterns.
 
 ## Determinism
 
@@ -67,7 +67,9 @@ This is procedure smell. Claude already knows how to use the deploy tool's MCP t
 
 Compare with the good version above. Same information, but the good version gives configuration facts while the bad version gives instructions.
 
-### Procedure Smell Heuristics
+### Procedure Smell Heuristics (`finding_type`: `procedure-smell-with-consequence`)
+
+One finding type covers this pattern at both severities — emit `procedure-smell-with-consequence` whether you file it Major (a citable concrete behavior) or Minor (no cited consequence). The suffix names the escalation predicate in [When This Applies](#when-this-applies), not a second finding type; there is no bare `procedure-smell`.
 
 Flag a skill when:
 
@@ -208,13 +210,66 @@ Procedure smell is over-prescription of *steps*. Two adjacent defects over-presc
 
 **The no-op test.** Run it on each sentence in isolation: *would removing this sentence change Claude's behavior versus its default?* If not, it's a no-op — delete the whole sentence rather than trimming words from it.
 
-**Fix.** Delete the line. If the author actually wanted *more* than the default — real extra thoroughness, not the baseline — restating the default won't get it: replace the weak word with a strong leading word that genuinely shifts behavior ("exhaustively enumerate every X", "relentless"), or attach a concrete, checkable bar. The technique stays; the no-op wording goes.
+**Fix.** Delete the line. If the author actually wanted *more* than the default — real extra thoroughness, not the baseline — a stronger adjective won't get it: a frontier model doesn't try harder for "exhaustively" or "relentless," it just reads more tokens for the same behavior. Attach a concrete, checkable bar instead, or name the specific thing to enumerate and where it lives ("enumerate every model touched in this PR's `db/migrate/` files," not "exhaustively enumerate every model"). See Cost [`emphasis-inflation`](./cost.md) — swapping in a stronger-sounding word is that anti-pattern, not a fix for this one.
 
 **Severity.** Minor.
 
 **Deterministic.** No — deciding a line restates the default (vs carries project-specific teeth) is judgment.
 
 **How to spot it.** Scan for exhortations with no project-specific object: adjectives of diligence ("careful", "thorough", "diligent"), generic quality reminders ("ensure correctness", "do a good job"). A line is a no-op only when stripping it leaves behavior unchanged — an exhortation tied to a real footgun ("be careful: the managed database silently drops the FK") is context, not a no-op.
+
+---
+
+## Form Discipline — Matching Documentation Form to Failure Mode
+
+Procedure smell, weak criteria, and no-ops are about *how much* a skill says. This pair is about *what shape* it says it in. A rule can be the right length and carry real teeth yet still fail to land because its **form** is mismatched to the failure it fights — the classic case being a discipline rule (one whose whole job is to make Claude resist a temptation) written as soft guidance that Claude negotiates away under pressure. Both finding types here are judgment-bound and both are under-fired: the skill reads fine because the *content* is right; only asking "is this the form that prevents this failure?" surfaces the defect.
+
+### Form mismatch (`finding_type`: `form-mismatch`)
+
+**Pattern.** The skill is trying to prevent a specific failure, but the form it uses predictably fails to prevent it. The canonical failure→form pairings:
+
+| The failure the rule fights | Form that holds | Mismatched form that fails |
+|---|---|---|
+| Claude skips/violates a discipline rule under pressure | prohibition + a rationalization table (each excuse → its counter) + a red-flags list | soft guidance ("prefer…", "consider…", "try to…") |
+| Wrong output shape (bloated, verdict buried) | a positive contract — state what the output *is* ("First line: PASS/FAIL. Then ≤3 bullets.") | a prohibition list ("don't be verbose", "don't bury the verdict") |
+| A required element gets omitted | structural — a REQUIRED field in a template Claude fills in | a prose reminder near the template ("remember to include the ticket link") |
+| Behaviour that should be conditional | a conditional keyed to an observable predicate ("if the PR touches `db/migrate/`, …") | an unconditional rule softened by exemption clauses ("always X, unless it doesn't apply") |
+
+The tell is a *mismatch*, not the mere presence of soft wording. A discipline skill — its job is to make Claude resist a temptation (don't skip tests, don't force-push, don't merge without review) — that ships only "prefer running tests first" is under-built for its own purpose: under pressure Claude negotiates the soft word away. The extreme case, a discipline rule guarding a destructive action with a built-in escape clause, is `negotiable-guardrail` below.
+
+**Fix.** Re-cast the guidance in the matching form: convert soft guidance guarding a real discipline into a prohibition backed by a short rationalization table + a red-flags list; convert an output-shape prohibition into a positive contract that states what the output *is*; move a "remember to…" reminder into a REQUIRED template field; key conditional behaviour to an observable predicate. **No nuance clauses** — "don't X unless it matters" reopens the negotiation the prohibition was meant to close.
+
+**Severity.** Minor by default. **Major** when you can cite a concrete behavior the mismatch causes (a fixture/eval where Claude negotiated past the soft rule, or shipped the wrong output shape despite the prohibition). Same "don't escalate on taste" bar as procedure smell.
+
+**Deterministic.** No — judging failure-type→form fit is judgment-bound.
+
+**How to spot it.** For each rule the skill states, ask: *what failure is this rule trying to prevent, and is this the form that prevents it?* A discipline rule written as soft guidance, an output-shape rule written as a prohibition, a required element left to a prose reminder, or conditional behaviour written as unconditional-plus-exemptions — each is a mismatch.
+
+**Guardrails — do NOT flag.**
+- Soft wording is fine when the choice really is a *preference*, not a discipline ("prefer tables to prose in the output" — there is no temptation to resist).
+- A skill that already uses the matching form (prohibition + rationalization table for a discipline rule; positive contract for output shape) is the *target state*, never a finding.
+- Do not demand a rationalization table on a skill that has no discipline rule to enforce — most context/reference skills have none.
+
+### Negotiable guardrail (`finding_type`: `negotiable-guardrail`)
+
+**Pattern.** An operational guardrail — a rule meant to stop Claude doing something costly or dangerous — ships with a built-in escape hatch that reopens the negotiation: "don't purge the queue *unless it's really necessary*", "avoid force-push *where possible*", "never skip the migration check *unless you're confident it's safe*". The escape clause is exactly the rationalization Claude reaches for under pressure, so the guardrail evaporates precisely when it is needed. Stated crisply: *"'Don't X unless it matters' reopens the negotiation."*
+
+This is the highest-stakes case of `form-mismatch` (a discipline rule in a self-defeating form), broken out because both the stakes and the fix are specific: the rule guards a real operational or destructive action, and the fix is to make the guardrail unconditional or to swap the vague hedge for an *observable* predicate.
+
+**Fix.** Remove the negotiable hedge. Either make the guardrail unconditional ("never purge the queue from this skill — if a purge is needed, escalate to the owning team"), or, when a legitimate exception exists, replace the vague hedge with a checkable predicate Claude cannot rationalize ("purge only when `queue_depth == 0`, confirmed via <tool>", not "unless necessary"). A concrete predicate is a gate; "unless it matters" is an invitation.
+
+**Severity.** **Major** by default when the guardrail governs an irreversible or destructive action (purge, delete, force-merge, kill-switch enable, any mutation) — the hedge there is a production-incident risk, mirroring Test Coverage's destructive-guardrail treatment. **Minor** when the guarded action is low-stakes.
+
+**Deterministic.** No — recognising a hedge as a *negotiable escape clause* vs a legitimate observable condition is judgment.
+
+**How to spot it.** Find every guardrail-shaped rule ("don't", "never", "avoid", "always"). For each, check whether its exception is *observable* ("if tests pass") or *negotiable* ("unless necessary", "where possible", "if you're confident", "use judgment", "when appropriate"). A negotiable exception on a rule guarding a costly or destructive action is the finding.
+
+**Guardrails — do NOT flag.**
+- An exception keyed to an observable predicate is not negotiable — that is the correct form ("skip the check only when the diff touches no `db/migrate/` files").
+- A soft *preference* that guards nothing costly is at most `form-mismatch`, not this — reserve `negotiable-guardrail` for rules protecting a real operational or destructive action.
+- "Use judgment" as the *whole* instruction for an inherently judgment-bound task is a `no-op-instruction`, not a negotiable guardrail — there is no guardrail being softened.
+
+**Category boundaries.** `negotiable-guardrail` is about the guardrail's *wording defeating itself*; Test Coverage's `operational-guardrail-untested` is about *no eval exercising it*; Integrity's `contradictory-instructions` is about *two rules conflicting*. A single guardrail can be both negotiable (Content Quality) and untested (Test Coverage) — file both.
 
 ---
 
@@ -225,12 +280,17 @@ Procedure smell is over-prescription of *steps*. Two adjacent defects over-presc
 - **Hook integration is NOT a Content Quality finding.** Whether a skill should auto-fire on a file write, command, or tool invocation is a placement / triggering concern. See [`convention.md`](./convention.md) § Hook Integration.
 - **A fuzzy-sounding criterion in a pure-context skill is not `weak-completion-criterion`.** A context/reference block has no task to complete — there's no step whose stop condition could be premature. Fire only when the skill drives real multi-step work.
 - **Emphasis tied to a project-specific footgun is not a no-op.** "Be careful — advisory locks make this non-reentrant" carries teeth Claude couldn't derive. The no-op test fails only when removing the line changes nothing versus default behavior.
+- **Soft wording on a genuine preference is not `form-mismatch`.** "Prefer tables to prose" guards no discipline — there is no temptation to resist, so the soft form is correct. Fire `form-mismatch` only when the rule fights a real failure (a discipline to hold, an output shape to enforce, a required element, a conditional) and the form works against that.
+- **An observable exception is not a `negotiable-guardrail`.** "Skip the check only when the diff touches no `db/migrate/` files" is a gate, not an escape hatch. Fire only on a *vague* hedge ("unless necessary", "where possible", "if confident") over a costly or destructive action.
+- **Emphasis stacked on a real rule is not `no-op-instruction` — route it to Cost.** A line that restates a default ("be thorough") is `no-op-instruction`; a line that inflates an already-real rule with boosters ("CRITICAL: YOU MUST ALWAYS…" wrapped around a genuine prohibition) is Cost's [`emphasis-inflation`](./cost.md), not this finding. File whichever one the line actually is — never both.
 
 ## Rewrite Policy
 
 **Produce a suggested rewrite for every procedure-smell / vague-context / `temporal-self-reference` finding that touches SKILL.md.** For `temporal-self-reference`, the rewrite restates the sentence in present tense — keeping the facts that still describe current behaviour and dropping the edit history itself (what changed, the prior behaviour, a since-fixed bug). The edit history is not a current-state fact, so dropping it is not "losing a fact": e.g. "filtering used to time out from a bug that is now fixed, so it returns cleanly" reduces to "filtering returns cleanly" (or to nothing, if that is already stated elsewhere). This is the category where rewrites are most load-bearing — abstract feedback ("this is procedure-smell") doesn't move authors, but a concrete replacement section does. The Rewrite Method earlier in this file is the authoring guide; [`suggested-rewrites.md`](./suggested-rewrites.md) owns the format spec (collapsible block, placement, authoring constraints).
 
-**`weak-completion-criterion` also gets a suggested rewrite** — the sharpened, checkable criterion is concrete and copy-pasteable, so it carries the same load-bearing value. **`no-op-instruction` gets prose only by default** ("delete lines X–Y — they restate the default"); attach a `suggested_rewrite` only when the fix is a strong-leading-word replacement rather than a deletion, in which case the rewrite is the replacement line.
+**`weak-completion-criterion` also gets a suggested rewrite** — the sharpened, checkable criterion is concrete and copy-pasteable, so it carries the same load-bearing value. **`no-op-instruction` gets prose only by default** ("delete lines X–Y — they restate the default"); attach a `suggested_rewrite` only when the fix replaces the no-op with a concrete, checkable bar or a named enumeration target rather than deleting it, in which case the rewrite is the replacement line. Never propose a stronger-sounding adjective as the replacement — that is Cost [`emphasis-inflation`](./cost.md), per the Fix above.
+
+**`form-mismatch` and `negotiable-guardrail` both get a suggested rewrite** — the re-formed guidance is the whole point of the finding and abstract feedback ("wrong form") doesn't move authors. For `form-mismatch`, the rewrite is the guidance in the matching form (the prohibition + a starter rationalization table, the positive output contract, the REQUIRED template field, or the observable-predicate conditional — whichever the mismatch calls for). For `negotiable-guardrail`, the rewrite is the tightened rule: unconditional, or with the vague hedge replaced by a checkable predicate.
 
 ## Notes for Implementers
 

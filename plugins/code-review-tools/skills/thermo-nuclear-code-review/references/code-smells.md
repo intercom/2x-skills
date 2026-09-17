@@ -33,4 +33,3 @@ Each smell reads *what it is* → *how to fix*. Match each against the diff (and
 - These smells are the **structural floor**, not a new axis. They feed the same finding format and the same severity ladder (BLOCKER / MAJOR / SUGGESTION) as the Non-Negotiable Standards.
 - When a smell points at a code judo move (whole branches, helpers, or layers disappearing), prefer that framing over a mechanical "extract method" suggestion — Standard 0 still governs.
 - Several smells overlap with the Standards by design (Duplicated Code ↔ Std 2/6, Speculative Generality / Middle Man ↔ Std 4, Primitive Obsession ↔ Std 5, Repeated Switches ↔ Std 4). The catalogue's job is to widen recall for the smells the Standards don't name explicitly — Mysterious Name, Feature Envy, Data Clumps, Shotgun Surgery, Divergent Change, Message Chains, Refused Bequest.
-</content>

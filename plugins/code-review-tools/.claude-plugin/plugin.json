@@ -1,6 +1,6 @@
 {
   "name": "code-review-tools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Strict structural and architectural code review that hunts for dramatic simplifications.",
   "author": {
     "name": "Fin 2x"
