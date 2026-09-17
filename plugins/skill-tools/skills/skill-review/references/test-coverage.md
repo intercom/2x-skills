@@ -8,8 +8,8 @@ Required evals exist for skills with broad reach. Behavioral and structural cove
 
 Severity tiers in scope: **Major**, **Minor**.
 
-- **Major** — required evals missing entirely on a widely-shared skill, OR an operational guardrail declared anywhere in the skill (SKILL.md or any reference file) is not exercised by any eval, OR an eval asserts behaviour the skill no longer implements (a stale eval that now validates *incorrect* output — false confidence), OR an eval that runs green without actually exercising the behaviour it claims to test (a false-coverage eval). The stale-eval and false-coverage cases are Major regardless of reach, because the harm (a green check on wrong or untested behaviour) doesn't depend on adoption. The operational-guardrail-untested case is likewise Major regardless of reach when the guardrail governs an **irreversible or destructive action** (purge, delete, kill-switch enable, force-merge, any mutation) — the personal/project-local carve-out below does not shield those.
-- **Minor** — missing evals on a personal or project-local skill (the floor for low-reach skills), OR eval-quality gaps (eval IDs out of sequence, missing structural mirror for a behavioral guardrail, wishlist coverage).
+- **Major** — required evals missing entirely on a widely-shared skill, OR an operational guardrail declared anywhere in the skill (SKILL.md or any reference file) is not exercised by any eval, OR an eval asserts behaviour the skill no longer implements (a stale eval that now validates *incorrect* output — false confidence), OR an eval that runs green without actually exercising the behaviour it claims to test (a false-coverage eval), OR a `trigger-evals.json` suite on a skill whose frontmatter sets `disable-model-invocation: true` (the suite asserts a routing path the skill has turned off). The stale-eval, false-coverage, and trigger-evals-on-non-autofire cases are Major regardless of reach, because the harm (a green check on wrong or untested behaviour) doesn't depend on adoption. The operational-guardrail-untested case is likewise Major regardless of reach when the guardrail governs an **irreversible or destructive action** (purge, delete, kill-switch enable, force-merge, any mutation) — the personal/project-local carve-out below does not shield those.
+- **Minor** — missing evals on a personal or project-local skill (the floor for low-reach skills), OR eval-quality gaps (eval IDs out of sequence, missing structural mirror for a behavioral guardrail, wishlist coverage, a discipline guardrail whose eval never applies pressure).
 
 ## When Evals Are Required
 
@@ -71,6 +71,20 @@ Passing Test Coverage is a claim that you enumerated the guardrails and found ea
 
 **Reach.** This finding is **not** the whole-skill missing-evals finding and is **not** shielded by the low-reach carve-out below. It is especially Major-regardless-of-reach when the untested guardrail governs an **irreversible or destructive action** — a queue purge, a delete, a kill-switch enable, a force-merge, any mutation, a "refuse the dangerous request" gate. A low-reach skill that ships a destructive guardrail with no eval gets the Major regardless: the cost of a silent regression there is a real production action, not a noisy review. (Ordinary, non-destructive guardrails on low-reach skills still warrant the finding, but the destructive case is the one the carve-out must never swallow.)
 
+### Guardrail eval never applies pressure (`finding_type`: `guardrail-eval-unpressured`)
+
+**Pattern.** A **discipline guardrail** — a rule whose whole job is to make Claude resist a temptation (don't skip the review step, don't force-merge, don't answer before reading the logs) — *does* have an eval that exercises the rule's triggering condition and asserts compliance, but only in a neutral frame. It never presents the pressure that would tempt a violation, so it proves the skill behaves when nothing is pushing against it, not that the guardrail *holds*. A discipline rule's failure mode is precisely "folds under pressure while behaving fine in neutral conditions" — a neutral-scenario eval is structurally blind to it and gives false confidence. A discipline eval must recreate the temptation, ideally combining several pressures (a deadline, sunk cost, an authority nudge), and assert the guardrail still holds.
+
+**Detection.** For each discipline guardrail that *does* have an eval, read the eval's prompt: does it apply adversarial pressure toward violating the rule, or does it just ask Claude to do the task in a neutral frame? A prompt with no temptation is unpressured.
+
+**Severity.** Minor — this is an eval-quality gap, not a coverage hole. The guardrail is exercised, just softly.
+
+**Deterministic.** No — judging whether a prompt applies real pressure toward the violation is judgment.
+
+**Fix.** Describe in prose the pressured case to add: a scenario that combines concrete pressures (deadline, sunk cost, authority) and forces an explicit choice, asserting Claude holds the guardrail and does not rationalize past it.
+
+**Boundary with `operational-guardrail-untested`.** The split is whether any eval exercises the guardrail's *triggering condition* — the state the rule governs. If no eval ever puts the skill in that state (the temptation is never even set up), nothing is sensitive to a violation → `operational-guardrail-untested` (Major); happy-path-only coverage of a destructive or irreversible action is effectively no coverage and stays Major there. This finding is the narrower case: an eval *does* exercise the triggering condition and asserts compliance, but in a neutral frame with no pressure toward the violation. Once the triggering condition is exercised, the remaining gap is pressure rather than coverage, so it is `guardrail-eval-unpressured` (Minor) regardless of stakes.
+
 ### Eval asserts stale behaviour (Major)
 
 **Pattern.** An eval's expectations describe behaviour the skill no longer implements — the skill was changed (a flow rewritten, an output format swapped, a tool migrated) but its evals weren't updated. The eval now codifies the *old* behaviour, so it passes when Claude does the wrong thing and fails when Claude does the right thing. Example: a skill switched from a remote-doc export to a local-HTML export, but an eval still asserted the remote-doc flow.
@@ -100,6 +114,22 @@ Passing Test Coverage is a claim that you enumerated the guardrails and found ea
 
 **Fix.** Move the behaviour-defining content out of the prompt and into reliance on the skill (the prompt should pose the situation, not pre-resolve it), and re-target the assertion at the skill under review. Confirm the case would now *fail* if the skill's rule were removed — that's the test that it tests anything. Describe the corrected case in prose; do not regenerate the eval JSON wholesale.
 
+### Trigger evals on a skill that can't auto-fire (Major)
+
+**`finding_type`: `trigger-evals-on-non-autofire-skill`** — pinned explicitly because this finding is deterministic and the determinism eval asserts finding-set stability by identifier.
+
+**Pattern.** `evals/trigger-evals.json` is present while the skill's frontmatter sets `disable-model-invocation: true`. Trigger evals assert that the skill's description auto-fires it from natural-language prompts — the exact path `disable-model-invocation: true` turns off. The suite is therefore a contradiction: it either fails permanently (CI noise) or passes without exercising a reachable path (false coverage, the same harm as the false-coverage finding above). `trigger-evals.json` is meaningful only for auto-fired skills. The usual origin is a skill flipped to slash-command-only without its eval suite being cleaned up.
+
+**Detection.** Mechanical: the frontmatter contains `disable-model-invocation: true` AND `evals/trigger-evals.json` exists in the skill's eval directory. `evals.json` behavioural evals are unaffected — they test the loaded skill's reasoning, not routing, and remain required regardless of invocation mode.
+
+**Severity.** Major — regardless of reach, same family as the stale-eval and false-coverage findings.
+
+**Deterministic.** Yes — a frontmatter field read plus a file-existence check.
+
+**Fix.** If the flip to slash-command-only is intended, delete `evals/trigger-evals.json` (keep `evals.json`). If the skill *should* auto-fire, remove `disable-model-invocation: true` instead. Never resolve it by weakening the trigger evals to pass without routing.
+
+**Boundary.** File existence is the whole predicate on purpose — there is no salvageable trigger-evals.json on a `disable-model-invocation: true` skill, so no per-case inspection is needed. Positive cases (`should_trigger: true`) can never pass: the field keeps the description out of the router's context entirely. Negative cases (`should_trigger: false`) pass vacuously for the same reason, so even a negative-only suite proves nothing about description broadening — the description isn't competing in the router at all. An author who wants to keep negative routing checks has set the wrong field: remove `disable-model-invocation: true`, don't keep the suite.
+
 ### Eval quality issues (Minor)
 
 - Behavioral eval IDs non-sequential — **deterministic** (numeric sequence comparison)
@@ -112,7 +142,7 @@ Tutorial content on eval file types, eval archetypes, what makes an eval good vs
 
 ## Out of Scope / False-Positive Guardrails
 
-- **Eval requirements vary by reach — but this carve-out is about *whole-skill* missing evals only.** Don't flag a personal / project-local / experimental skill for having *no eval suite* — only widely-shared skills are gate-enforced for that. The carve-out does **not** extend to: an untested **destructive/irreversible** operational guardrail (Major regardless of reach), a **stale** eval, or a **false-coverage** eval (both Major regardless of reach). Those harms don't depend on adoption, so reach doesn't excuse them.
+- **Eval requirements vary by reach — but this carve-out is about *whole-skill* missing evals only.** Don't flag a personal / project-local / experimental skill for having *no eval suite* — only widely-shared skills are gate-enforced for that. The carve-out does **not** extend to: an untested **destructive/irreversible** operational guardrail, a **stale** eval, a **false-coverage** eval, or a **trigger-evals suite on a `disable-model-invocation: true` skill** (all Major regardless of reach). Those harms don't depend on adoption, so reach doesn't excuse them.
 - **The operational-guardrail-untested predicate has a tight boundary.** Style rules ("be concise", "don't paraphrase") are not operational guardrails. Only flag it when violating the rule would change a *correctness verdict*, not the format of the output.
 - **One eval location is enough.** A skill that has `evals/evals.json` but no repo-root test suite (or vice versa) is fine. Both is ideal but not required.
 

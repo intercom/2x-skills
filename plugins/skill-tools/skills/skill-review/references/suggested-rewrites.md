@@ -2,7 +2,7 @@
 
 This file is the **cross-cutting format spec** for the rewrite block — placement, structure, authoring constraints. It does NOT decide *whether* a given finding gets a rewrite.
 
-**The decision to rewrite (or not) for a finding lives in that finding's category reference**, under the "Rewrite Policy" subsection — see [`structural.md`](./structural.md), [`integrity.md`](./integrity.md), [`test-coverage.md`](./test-coverage.md), [`security.md`](./security.md), [`content-quality.md`](./content-quality.md), [`convention.md`](./convention.md), or [`cost.md`](./cost.md) for the policy that applies to its findings.
+**The decision to rewrite (or not) for a finding lives in that finding's category reference**, under the "Rewrite Policy" subsection — see [`structural.md`](./structural.md), [`integrity.md`](./integrity.md), [`test-coverage.md`](./test-coverage.md), [`security.md`](./security.md), [`content-quality.md`](./content-quality.md), [`convention.md`](./convention.md), [`cost.md`](./cost.md), or [`hooks.md`](./hooks.md) for the policy that applies to its findings.
 
 Quick reference — which categories produce rewrites:
 
@@ -11,10 +11,11 @@ Quick reference — which categories produce rewrites:
 | Structural Discipline | No (describe structural change in prose) |
 | Integrity | **Yes** for Behaviour findings (concrete code fix); prose for others |
 | Test Coverage | No (describe the eval scenario in prose) |
-| Security | **Yes** for executable-script bugs; prose for credential-paste and auth-flow findings |
-| Content Quality | **Yes** for procedure smell / vague context, `weak-completion-criterion`, and `temporal-self-reference`; prose for `no-op-instruction` (unless the fix is a strong-leading-word replacement) |
-| Convention | **Yes** for similar-skill "differentiate" verdict, `description-as-routing-signal`, and `invocation-mode-mismatch`; prose for placement / hook integration / repo-convention |
+| Security | **Yes** for executable-script bugs and hardcoded-secret-in-bundled-script; prose for credential-paste and auth-flow findings |
+| Content Quality | **Yes** for procedure smell / vague context / temporal self-reference, `weak-completion-criterion`, `form-mismatch`, and `negotiable-guardrail`; prose for `no-op-instruction` (**never** a strong-leading-word replacement — that is Cost's `emphasis-inflation`; the rewrite either states a checkable bar or deletes the line) |
+| Convention | **Yes** for similar-skill "differentiate" verdict, `description-as-routing-signal`, `description-encodes-process`, and `invocation-mode-mismatch`; prose for placement / hook integration / repo-convention |
 | Cost | No (point at the anti-pattern and name the lever; author applies the fix) |
+| Hooks | **Yes** for mechanical script defects (raw-payload-grep, nonstandard-block-convention, unnarrowed-matcher); prose for judgment findings (advertisement migration, heavy-work, hot-event, duplicate, marker, oversized) |
 
 The rest of this file is the format spec the rewrite block follows when a category does call for one.
 
