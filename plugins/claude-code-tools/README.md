@@ -1,6 +1,6 @@
 # claude-code-tools
 
-Meta-tools for running Claude Code well: audit your permission allowlist, fix local toolchain gaps, and analyze usage costs.
+Meta-tools for running Claude Code well: audit your permission allowlist, fix local toolchain gaps, analyze usage costs, and prune stale saved memories.
 
 Part of the [`fin-2x`](../../README.md) marketplace.
 
@@ -16,6 +16,7 @@ Part of the [`fin-2x`](../../README.md) marketplace.
 - **[permissions-analyzer](./skills/permissions-analyzer/)** — Vets a Claude Code permission allowlist against a GREEN/YELLOW/RED safety model and merges the safe entries into `~/.claude/settings.json`. Runs on top of the built-in `/fewer-permission-prompts` scan, adding a RED override that never auto-allows shell interpreters or package-manager executors (`npm`, `uv`, `bundle`, `npx`, …).
 - **[tool-misses](./skills/tool-misses/)** — Scans recent Claude Code sessions for `command not found` errors and BSD/GNU incompatibilities on macOS, fixes them via Homebrew, and records availability in CLAUDE.md.
 - **[cc-cost-analysis](./skills/cc-cost-analysis/)** — A framework, ready-to-use query shapes, and cost-model formulas for analyzing Claude Code usage costs from exported OpenTelemetry data (per-user spend, expensive sessions, context bloat, model/token breakdowns).
+- **[audit-memory](./skills/audit-memory/)** — Saved memories are point-in-time observations, and a memory that was true when written becomes a confidently wrong instruction to every future session. `/audit-memory` verifies each claim against current code, PRs and tickets, then archives the stale ones with your approval. It snapshots every file before touching it, never truth-checks a stated preference, and reports a claim it could not check as `NEEDS-<tool>` rather than as stale — absence of evidence never becomes evidence of staleness.
 
 ## Hooks
 

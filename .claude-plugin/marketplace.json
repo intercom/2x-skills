@@ -18,7 +18,7 @@
     {
       "name": "claude-code-tools",
       "source": "./plugins/claude-code-tools",
-      "description": "Meta-tools for running Claude Code well: audit your permission allowlist, fix local toolchain gaps, and analyze usage costs."
+      "description": "Meta-tools for running Claude Code well: audit your permission allowlist, fix local toolchain gaps, analyze usage costs, and prune stale saved memories."
     },
     {
       "name": "test-tools",
