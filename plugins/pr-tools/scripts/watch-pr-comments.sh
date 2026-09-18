@@ -155,7 +155,7 @@ emit_rows() {
 # Comments use updated_at to match the `since` filter's semantics — an edited
 # old comment is served with its edit time, so it's reported once instead of
 # on every subsequent run.
-comment_rows_jq='.[] | [(.id|tostring), .user.login, (.updated_at // .created_at), "", (.body // "" | gsub("[\r\n\t]+";" ") | if length > 2000 then .[0:2000] + "…(truncated)" else . end)] | join("")'
+comment_rows_jq='.[] | [(.id|tostring), .user.login, (.updated_at // .created_at), "", (.body // "" | gsub("[\r\n\t\u001f]+";" ") | if length > 2000 then .[0:2000] + "…(truncated)" else . end)] | join("\u001f")'
 
 while true; do
     # Back-date the round cursor by one second: timestamps are whole-second,
@@ -179,7 +179,7 @@ while true; do
     # Reviews are PR-only — the pulls/* endpoint 404s for a plain issue.
     [[ "$is_pr" == true ]] && read_endpoint "repos/$owner/$repo/pulls/$pr_number/reviews?per_page=100" "" || all_body=""
     if [[ -n "$all_body" ]]; then
-        rows="$(jq -r --arg cursor "$cursor" '.[] | select(.submitted_at != null and .submitted_at > $cursor) | [(.id|tostring), .user.login, .submitted_at, .state, (.body // "" | gsub("[\r\n\t]+";" ") | if length > 2000 then .[0:2000] + "…(truncated)" else . end)] | join("")' <<<"$all_body" 2>/dev/null)" || rows=""
+        rows="$(jq -r --arg cursor "$cursor" '.[] | select(.submitted_at != null and .submitted_at > $cursor) | [(.id|tostring), .user.login, .submitted_at, .state, (.body // "" | gsub("[\r\n\t\u001f]+";" ") | if length > 2000 then .[0:2000] + "…(truncated)" else . end)] | join("\u001f")' <<<"$all_body" 2>/dev/null)" || rows=""
         emit_rows "review" "$rows"
     fi
 
