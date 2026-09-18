@@ -232,6 +232,25 @@ The footer is the only attribution outside the collapsed `<details>` block (Core
 - `### Risks` - ONLY if user mentioned specific concerns
 - `<details><summary>Notes for reviewers</summary>` collapsible (after `How?`) - ONLY when there is scope rationale a reviewer genuinely needs beyond the diff (e.g. why files beyond the obvious were touched, or why the change spans more than one area — Core Rule 9). Never add it empty or as filler, and never for merge-reassurance boilerplate ("safe to merge", "purely additive") — that is always omitted, never collapsed.
 
+### 5. Launch the watchers
+
+Once the PR URL is known, launch all three watchers in the background — one Bash tool call per watcher, `run_in_background: true` on each:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/watch-pr-comments.sh" <pr-url>
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/watch-pr-merged.sh" <pr-url>
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/pr-check-watcher.sh" <pr-url>
+```
+
+Do NOT poll `gh pr view` or `gh pr checks` for comments, merge state, or CI — that is what these watchers replace.
+
+Exit codes:
+- `watch-pr-merged.sh`: 0 = merged (prints `MERGED <sha>`), 1 = closed unmerged, 2 = error, 3 = timed out (prints `RESUME_ETAG=<etag>`)
+- `watch-pr-comments.sh`: 0 = new activity (prints items then `NEXT_SINCE=<cursor>`), 2 = error, 3 = timed out (prints `NEXT_SINCE=<cursor>`)
+- `pr-check-watcher.sh`: 0 = all checks passed, 1 = one or more failed (prints the failing check names and URLs), 2 = error, 3 = timed out (prints `RESUME_ETAGS=<a>|||<b>`)
+
+**Exit 3 is not "give up" — it is "resume".** All three cap out at `WATCH_MAX_WAIT=570` seconds (~9.5 min) and exit 3 rather than block forever. On exit 3, immediately re-launch the same script in the background, passing the printed cursor as the second argument: `RESUME_ETAG` for `watch-pr-merged.sh`, `NEXT_SINCE` for `watch-pr-comments.sh`, `RESUME_ETAGS` for `pr-check-watcher.sh`. Skipping this means a PR that merges or gets reviewed hours later is silently missed.
+
 ## Response Style
 
 Output only what the user needs to act:
