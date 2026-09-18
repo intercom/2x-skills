@@ -97,14 +97,14 @@ MOCK
 
 @test "merged on the first poll exits 0 with MERGED <sha>" {
   _set_plan '{"code":200,"etag":"e1","body":{"merged":true,"state":"closed","merge_commit_sha":"deadbeef"}}'
-  run "$SCRIPT" "https://github.com/intercom/intercom/pull/1"
+  run "$SCRIPT" "https://github.com/acme/widgets/pull/1"
   [ "$status" -eq 0 ]
   [[ "$output" == *"MERGED deadbeef"* ]]
 }
 
 @test "closed without merging exits 1 with CLOSED_UNMERGED" {
   _set_plan '{"code":200,"etag":"e1","body":{"merged":false,"state":"closed","merge_commit_sha":null}}'
-  run "$SCRIPT" "https://github.com/intercom/intercom/pull/2"
+  run "$SCRIPT" "https://github.com/acme/widgets/pull/2"
   [ "$status" -eq 1 ]
   [[ "$output" == *"CLOSED_UNMERGED"* ]]
 }
@@ -120,7 +120,7 @@ MOCK
   _set_plan \
     '{"code":304,"etag":"priorEtag","body":{}}' \
     '{"code":200,"etag":"e2","body":{"merged":true,"state":"closed","merge_commit_sha":"cafebabe"}}'
-  run "$SCRIPT" "https://github.com/intercom/intercom/pull/3" "priorEtag"
+  run "$SCRIPT" "https://github.com/acme/widgets/pull/3" "priorEtag"
   [ "$status" -eq 0 ]
   [[ "$output" == *"MERGED cafebabe"* ]]
 }
@@ -135,7 +135,7 @@ MOCK
   # exit 1 that reads as CLOSED_UNMERGED.
   export WATCH_MAX_WAIT=30
   _set_plan '{"code":"error","etag":"","body":{}}'
-  run "$SCRIPT" "https://github.com/intercom/intercom/pull/5"
+  run "$SCRIPT" "https://github.com/acme/widgets/pull/5"
   [ "$status" -eq 2 ]
   [[ "$output" == *"repeated failures"* ]]
   [[ "$output" != *"CLOSED_UNMERGED"* ]]
@@ -144,7 +144,7 @@ MOCK
 @test "PR stays open through the whole window: exits 3 with RESUME_ETAG" {
   export WATCH_MAX_WAIT=1
   _set_plan '{"code":200,"etag":"eOpen","body":{"merged":false,"state":"open","merge_commit_sha":null}}'
-  run "$SCRIPT" "https://github.com/intercom/intercom/pull/4"
+  run "$SCRIPT" "https://github.com/acme/widgets/pull/4"
   [ "$status" -eq 3 ]
   # The mock's etag header carries real HTTP-style quotes (as GitHub's do);
   # the script passes them through unstripped, same as pr-check-watcher.sh.
