@@ -1,0 +1,15 @@
+{
+  "name": "incident-tools",
+  "version": "0.1.0",
+  "description": "Evidence-grounded root cause analysis for incidents and post-mortems.",
+  "author": {
+    "name": "Fin 2x"
+  },
+  "keywords": [
+    "incident",
+    "rca",
+    "post-mortem",
+    "five-whys"
+  ],
+  "license": "MIT"
+}

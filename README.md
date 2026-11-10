@@ -19,6 +19,7 @@ Add the marketplace, then install the plugin you want:
 - **[test-tools](./plugins/test-tools/)** — Investigate and fix flaky tests. The `fix-flaky-tests` skill detects your framework and CI provider, classifies the flake, and enforces green-CI-as-the-only-verification discipline across RSpec, Jest, pytest, Go test, and more.
 - **[code-review-tools](./plugins/code-review-tools/)** — The `thermo-nuclear-code-review` skill runs an extremely strict structural and architectural review, hunting for "code judo" simplifications rather than correctness bugs or style nits.
 - **[pr-tools](./plugins/pr-tools/)** — Open well-formed GitHub pull requests from Claude Code and attach screenshots and recordings to them. Includes `create-pr` (intent-gathering, diff validation, public-repo safeguards) and `attach-github-assets` (upload local images/recordings to GitHub for use in PR and issue markdown).
+- **[incident-tools](./plugins/incident-tools/)** — Evidence-grounded root cause analysis. The `five-whys` skill builds a causal chain from impact to actionable root cause, has fact-checker subagents verify every claim against a primary source, and has a cynic subagent try to break each causal link before the analysis ships.
 
 ## License
 
