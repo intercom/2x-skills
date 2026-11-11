@@ -34,6 +34,11 @@
       "name": "pr-tools",
       "source": "./plugins/pr-tools",
       "description": "Open well-formed GitHub pull requests from Claude Code and attach screenshots and recordings to them."
+    },
+    {
+      "name": "incident-tools",
+      "source": "./plugins/incident-tools",
+      "description": "Evidence-grounded root cause analysis for incidents and post-mortems."
     }
   ]
 }
